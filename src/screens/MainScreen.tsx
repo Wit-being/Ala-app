@@ -8,12 +8,15 @@ import {
   ActivityIndicator,
   Image,
   Dimensions,
+  Alert,
+  Modal,
+  ScrollView,
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import PagerView from 'react-native-pager-view';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
@@ -21,7 +24,7 @@ import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import GlassCard from '../components/GlassCard';
 import PillButton from '../components/PillButton';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const theme = {
   background: '#050a15',
@@ -34,7 +37,9 @@ const theme = {
   textPrimary: '#f1f5f9',
   textSecondary: '#94a3b8',
   textSubtle: '#64748b',
+  textMuted: '#475569',
   danger: '#ef4444',
+  success: '#10b981',
   glowBlue: 'rgba(96, 165, 250, 0.2)',
   glowGold: 'rgba(212, 175, 55, 0.2)',
 };
@@ -46,36 +51,40 @@ interface Dream {
   content: string | null;
   audio_url: string | null;
   is_public: boolean;
+  status?: string;
   dream_date: string;
   created_at: string;
-  profiles?: {
-    display_name: string | null;
-    avatar_url: string | null;
-  } | null;
+  interpretation_mode?: string;
+  enable_engagement?: boolean;
+}
+
+interface DreamWithMeta extends Dream {
+  likeCount?: number;
+  interpretationCount?: number;
 }
 
 export default function MainScreen({ navigation }: any) {
   const user = useAuthStore((state) => state.user);
   const [activeTab, setActiveTab] = useState(0);
-  const [feedDreams, setFeedDreams] = useState<Dream[]>([]);
-  const [myDreams, setMyDreams] = useState<Dream[]>([]);
+  const [feedDreams, setFeedDreams] = useState<DreamWithMeta[]>([]);
+  const [myDreams, setMyDreams] = useState<DreamWithMeta[]>([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [myDreamsLoading, setMyDreamsLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [myDreamsError, setMyDreamsError] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
-  
+  const [selectedDream, setSelectedDream] = useState<DreamWithMeta | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+
   const pagerRef = useRef<PagerView>(null);
-  const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
   const currentAudioUrl = useRef<string | null>(null);
-  
+
   const player = useAudioPlayer();
   const status = useAudioPlayerStatus(player);
 
   const userAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.email || 'U')}&background=1e293b&color=60a5fa&size=64`;
 
-  // Fetch data when screen focuses
   useFocusEffect(
     useCallback(() => {
       fetchFeedDreams();
@@ -84,10 +93,9 @@ export default function MainScreen({ navigation }: any) {
         player.pause();
         resetAudioState();
       };
-    }, [])
+    }, [user?.id])
   );
 
-  // Handle audio completion
   useEffect(() => {
     if (status.didJustFinish) {
       resetAudioState();
@@ -98,21 +106,44 @@ export default function MainScreen({ navigation }: any) {
     try {
       setFeedLoading(true);
       setFeedError(null);
-      
+
       const { data, error } = await supabase
         .from('dreams')
-        .select(`
-          *,
-          profiles!dreams_user_id_fkey (
-            display_name,
-            avatar_url
-          )
-        `)
+        .select('id, user_id, title, content, audio_url, is_public, dream_date, created_at, status, interpretation_mode, enable_engagement')
         .eq('is_public', true)
-        .order('created_at', { ascending: false });
+        .eq('status', 'published')
+        .order('created_at', { ascending: false })
+        .limit(50);
 
       if (error) throw error;
-      setFeedDreams(data || []);
+
+      // Fetch engagement counts
+      const dreamsWithMeta = await Promise.all(
+        (data || []).map(async (dream) => {
+          let likeCount = 0;
+          let interpretationCount = 0;
+
+          if (dream.enable_engagement) {
+            const { count: likes } = await supabase
+              .from('dream_likes')
+              .select('*', { count: 'exact', head: true })
+              .eq('dream_id', dream.id);
+            likeCount = likes || 0;
+          }
+
+          if (dream.interpretation_mode && dream.interpretation_mode !== 'disabled') {
+            const { count: interpretations } = await supabase
+              .from('interpretations')
+              .select('*', { count: 'exact', head: true })
+              .eq('dream_id', dream.id);
+            interpretationCount = interpretations || 0;
+          }
+
+          return { ...dream, likeCount, interpretationCount };
+        })
+      );
+
+      setFeedDreams(dreamsWithMeta);
     } catch (error: any) {
       console.error('Feed error:', error);
       setFeedError(error.message || 'Failed to load dreams');
@@ -123,16 +154,17 @@ export default function MainScreen({ navigation }: any) {
 
   const fetchMyDreams = async () => {
     if (!user) return;
-    
+
     try {
       setMyDreamsLoading(true);
       setMyDreamsError(null);
-      
+
       const { data, error } = await supabase
         .from('dreams')
-        .select('*')
+        .select('id, user_id, title, content, audio_url, is_public, dream_date, created_at, status, interpretation_mode, enable_engagement')
         .eq('user_id', user.id)
-        .order('dream_date', { ascending: false });
+        .order('dream_date', { ascending: false })
+        .limit(50);
 
       if (error) throw error;
       setMyDreams(data || []);
@@ -153,7 +185,6 @@ export default function MainScreen({ navigation }: any) {
   const playAudio = async (dream: Dream) => {
     if (!dream.audio_url) return;
 
-    // Toggle play/pause for same dream
     if (playingId === dream.id) {
       if (status.playing) {
         player.pause();
@@ -165,20 +196,18 @@ export default function MainScreen({ navigation }: any) {
 
     setIsAudioLoading(true);
 
-    // Stop current audio
     if (playingId) {
       player.pause();
     }
 
     try {
       let audioUrl = dream.audio_url;
-      
-      // Get signed URL for private dreams
-      if (!dream.is_public && dream.user_id === user?.id) {
+
+      if (!dream.is_public && dream.user_id === user?.id && !dream.audio_url.startsWith('http')) {
         const { data, error } = await supabase.storage
           .from('ala-audio-private')
           .createSignedUrl(dream.audio_url, 3600);
-        
+
         if (error) throw error;
         if (data?.signedUrl) {
           audioUrl = data.signedUrl;
@@ -189,9 +218,9 @@ export default function MainScreen({ navigation }: any) {
       currentAudioUrl.current = audioUrl;
       await player.play();
       setPlayingId(dream.id);
-
     } catch (error: any) {
-      console.error('Audio error:', error);
+      console.error('Audio playback error:', error);
+      Alert.alert('Playback Error', 'Unable to play this audio');
       resetAudioState();
     } finally {
       setIsAudioLoading(false);
@@ -199,16 +228,30 @@ export default function MainScreen({ navigation }: any) {
   };
 
   const deleteDream = async (dreamId: string) => {
-    try {
-      await supabase.from('dreams').delete().eq('id', dreamId);
-      setMyDreams(prev => prev.filter(d => d.id !== dreamId));
-      if (playingId === dreamId) {
-        player.pause();
-        resetAudioState();
-      }
-    } catch (error) {
-      console.error('Delete error:', error);
-    }
+    Alert.alert('Delete Dream', 'Are you sure you want to delete this dream?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const { error } = await supabase.from('dreams').delete().eq('id', dreamId);
+
+            if (error) throw error;
+
+            setMyDreams((prev) => prev.filter((d) => d.id !== dreamId));
+            if (playingId === dreamId) {
+              player.pause();
+              resetAudioState();
+            }
+            setModalVisible(false);
+          } catch (error) {
+            console.error('Delete error:', error);
+            Alert.alert('Error', 'Failed to delete dream');
+          }
+        },
+      },
+    ]);
   };
 
   const formatTime = (ms: number) => {
@@ -224,175 +267,218 @@ export default function MainScreen({ navigation }: any) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  // Handle page change from swipe
-  const onPageSelected = (e: any) => {
-    const position = e.nativeEvent.position;
-    setActiveTab(position);
-    Animated.spring(tabIndicatorAnim, {
-      toValue: position,
-      useNativeDriver: true,
-      tension: 68,
-      friction: 12,
-    }).start();
+  const truncateText = (text: string, lines: number) => {
+    const lineArray = text.split('\n').slice(0, lines);
+    return lineArray.join('\n');
   };
 
-  // Handle tab press
+  const onPageSelected = (e: any) => {
+    setActiveTab(e.nativeEvent.position);
+  };
+
   const switchTab = (index: number) => {
     pagerRef.current?.setPage(index);
   };
 
-  // Tab indicator animation
-  const tabIndicatorTranslate = tabIndicatorAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [4, 84],
-  });
+  const handleCirclesPress = () => {
+    Alert.alert('Coming Soon', 'Dream Circles will be available in the next update.');
+  };
 
-  // Error State Component
-  const ErrorState = ({ message, onRetry, type }: { message: string; onRetry: () => void; type: 'feed' | 'mine' }) => (
-    <View style={styles.stateContainer}>
-      <Text style={styles.stateIcon}>⚠️</Text>
-      <Text style={styles.stateTitle}>Connection Issue</Text>
-      <Text style={styles.stateSubtitle}>{message}</Text>
-      <View style={styles.stateActions}>
-        <PillButton title="Try Again" onPress={onRetry} variant="primary" size="medium" />
-        {type === 'feed' && (
-          <PillButton 
-            title="Invite Friends" 
-            onPress={() => {}} 
-            variant="glass" 
-            size="medium"
-            style={{ marginTop: 12 }}
-          />
-        )}
-      </View>
-    </View>
+  // Compact Dream Card (Summary)
+  const CompactDreamCard = React.memo(
+    ({ item, showDelete = false, onPress }: { item: DreamWithMeta; showDelete?: boolean; onPress: () => void }) => {
+      const isPlaying = playingId === item.id && status.playing;
+      const isMine = item.user_id === user?.id;
+      const hasAudio = !!item.audio_url;
+      const hasContent = !!item.content;
+
+      const userName = isMine ? 'You' : 'Dreamer';
+      const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=1e293b&color=60a5fa&size=64`;
+
+      return (
+        <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+          <View style={[styles.compactCard, isPlaying && styles.compactCardPlaying]}>
+            <LinearGradient
+              colors={['rgba(96, 165, 250, 0.08)', 'rgba(212, 175, 55, 0.04)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.cardGradient}
+            >
+              {/* Header */}
+              <View style={styles.compactHeader}>
+                <View style={styles.compactUserRow}>
+                  <Image source={{ uri: avatarUrl }} style={styles.compactAvatar} />
+                  <View style={styles.compactUserInfo}>
+                    <Text style={styles.compactUserName}>{userName}</Text>
+                    <Text style={styles.compactDate}>{formatDate(item.dream_date)}</Text>
+                  </View>
+                </View>
+                {showDelete && (
+                  <View style={[styles.compactBadge, item.is_public ? styles.badgePublic : styles.badgePrivate]}>
+                    <Text style={styles.compactBadgeText}>{item.is_public ? 'Public' : 'Private'}</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Content Preview */}
+              <View style={styles.compactContent}>
+                {item.title && <Text style={styles.compactTitle}>{item.title}</Text>}
+
+                {hasContent && (
+                  <Text style={styles.compactExcerpt} numberOfLines={2}>
+                    {item.content}
+                  </Text>
+                )}
+
+                {hasAudio && !hasContent && (
+                  <View style={styles.audioIndicator}>
+                    <Ionicons name="musical-notes" size={14} color={theme.primary} />
+                    <Text style={styles.audioIndicatorText}>Audio recording</Text>
+                  </View>
+                )}
+
+                {!hasAudio && !hasContent && (
+                  <Text style={styles.compactExcerpt}>No content yet</Text>
+                )}
+              </View>
+
+              {/* Footer - Engagement */}
+              <View style={styles.compactFooter}>
+                <View style={styles.engagementPills}>
+                  {hasAudio && (
+                    <View style={styles.engagementPill}>
+                      <Ionicons name="play-circle" size={12} color={theme.primary} />
+                      <Text style={styles.engagementText}>Audio</Text>
+                    </View>
+                  )}
+
+                  {item.enable_engagement && (item.likeCount ?? 0) > 0 && (
+                    <View style={styles.engagementPill}>
+                      <Ionicons name="heart" size={12} color={theme.danger} />
+                      <Text style={styles.engagementText}>{item.likeCount}</Text>
+                    </View>
+                  )}
+
+                  {(item.interpretationCount ?? 0) > 0 && (
+                    <View style={styles.engagementPill}>
+                      <Ionicons name="chatbubble" size={12} color={theme.gold} />
+                      <Text style={styles.engagementText}>{item.interpretationCount ?? 0}</Text>
+                    </View>
+                  )}
+                </View>
+
+                <Ionicons name="chevron-forward" size={16} color={theme.textSubtle} />
+              </View>
+            </LinearGradient>
+          </View>
+        </TouchableOpacity>
+      );
+    }
   );
 
-  // Empty State Component
-  const EmptyState = ({ type }: { type: 'feed' | 'mine' }) => (
-    <View style={styles.stateContainer}>
-      <Text style={styles.stateIcon}>{type === 'feed' ? '🌙' : '💭'}</Text>
-      <Text style={styles.stateTitle}>
-        {type === 'feed' ? 'No dreams in the feed yet' : 'No dreams recorded yet'}
-      </Text>
-      <Text style={styles.stateSubtitle}>
-        {type === 'feed' 
-          ? 'Be the first to share a dream with the community' 
-          : 'Start capturing your dreams by tapping Record below'}
-      </Text>
-      <View style={styles.stateActions}>
-        <PillButton 
-          title={type === 'feed' ? 'Share a Dream' : 'Record Your First Dream'} 
-          onPress={() => navigation.navigate('RecordDream')} 
-          variant="primary" 
-          size="medium"
-          icon="●"
-        />
-        {type === 'feed' && (
-          <PillButton 
-            title="Invite Friends" 
-            onPress={() => {}} 
-            variant="glass" 
-            size="medium"
-            style={{ marginTop: 12 }}
-          />
-        )}
-      </View>
-    </View>
-  );
+  // Full Dream Modal
+  const DreamModal = ({ dream, visible, onClose, onDelete }: { dream: DreamWithMeta | null; visible: boolean; onClose: () => void; onDelete?: () => void }) => {
+    if (!dream) return null;
 
-  // Dream Card Component
-  const DreamCard = ({ item, showDelete = false }: { item: Dream; showDelete?: boolean }) => {
-    const isPlaying = playingId === item.id && status.playing;
-    const isThisDream = playingId === item.id;
-    const isLoadingThis = isAudioLoading && !playingId;
-    const isMine = item.user_id === user?.id;
+    const isPlaying = playingId === dream.id && status.playing;
+    const isThisDream = playingId === dream.id;
+    const isMine = dream.user_id === user?.id;
+    const progressPercent = isThisDream && status.duration > 0 ? Math.min(100, (status.currentTime / status.duration) * 100) : 0;
 
-    const progressPercent = isThisDream && status.duration > 0 
-      ? Math.min(100, (status.currentTime / status.duration) * 100)
-      : 0;
-
-    const userName = item.profiles?.display_name || (isMine ? 'You' : 'Dreamer');
-    const avatarUrl = item.profiles?.avatar_url || 
-      `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=1e293b&color=60a5fa&size=64`;
+    const userName = isMine ? 'You' : 'Dreamer';
+    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=1e293b&color=60a5fa&size=64`;
 
     return (
-      <GlassCard style={styles.dreamCard} glow={isPlaying ? 'blue' : 'none'}>
-        {/* Header */}
-        <View style={styles.cardHeader}>
-          <View style={styles.userRow}>
-            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-            <View style={styles.userInfo}>
-              <Text style={styles.userName}>{userName}</Text>
-              <Text style={styles.dreamDate}>{formatDate(item.dream_date)}</Text>
-            </View>
-          </View>
-          {showDelete && (
-            <View style={[styles.badge, item.is_public ? styles.badgePublic : styles.badgePrivate]}>
-              <Text style={styles.badgeText}>{item.is_public ? 'Public' : 'Private'}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Content */}
-        <Text style={styles.dreamTitle}>{item.title || 'Untitled Dream'}</Text>
-        {item.content && (
-          <Text style={styles.dreamContent} numberOfLines={3}>{item.content}</Text>
-        )}
-
-        {/* Audio Player */}
-        {item.audio_url && (
-          <View style={styles.audioSection}>
-            <View style={styles.audioControls}>
-              <PillButton
-                title={isPlaying ? 'Pause' : 'Play'}
-                icon={isPlaying ? '❚❚' : '▶'}
-                onPress={() => playAudio(item)}
-                variant={isPlaying ? 'primary' : 'glass'}
-                size="small"
-                loading={isLoadingThis && playingId === item.id}
-              />
-              
-              {isThisDream && (
-                <Text style={styles.timeDisplay}>
-                  {formatTime(status.currentTime)} / {formatTime(status.duration)}
-                </Text>
-              )}
-              
-              {showDelete && (
-                <TouchableOpacity 
-                  onPress={() => deleteDream(item.id)} 
-                  style={styles.deleteBtn}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.deleteText}>Delete</Text>
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <SafeAreaView style={styles.modalContainer}>
+          <LinearGradient colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]} style={styles.modalGradient}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn}>
+                <Ionicons name="chevron-down" size={28} color={theme.textPrimary} />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Dream</Text>
+              {isMine && (
+                <TouchableOpacity onPress={() => onDelete?.()} style={styles.modalDeleteBtn}>
+                  <Ionicons name="trash-outline" size={24} color={theme.danger} />
                 </TouchableOpacity>
               )}
             </View>
 
-            {isThisDream && (
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+            {/* Modal Content */}
+            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+              {/* User Info */}
+              <View style={styles.modalUserRow}>
+                <Image source={{ uri: avatarUrl }} style={styles.modalAvatar} />
+                <View>
+                  <Text style={styles.modalUserName}>{userName}</Text>
+                  <Text style={styles.modalDate}>{formatDate(dream.dream_date)}</Text>
+                </View>
               </View>
-            )}
-          </View>
-        )}
 
-        {/* Delete button when no audio */}
-        {!item.audio_url && showDelete && (
-          <TouchableOpacity 
-            onPress={() => deleteDream(item.id)} 
-            style={styles.deleteBtn}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.deleteText}>Delete</Text>
-          </TouchableOpacity>
-        )}
-      </GlassCard>
+              {/* Title */}
+              {dream.title && <Text style={styles.modalTitle}>{dream.title}</Text>}
+
+              {/* Content */}
+              {dream.content && <Text style={styles.modalContent}>{dream.content}</Text>}
+
+              {/* Audio Player */}
+              {dream.audio_url && (
+                <View style={styles.modalAudioSection}>
+                  <View style={styles.modalAudioControls}>
+                    <PillButton
+                      title={isPlaying ? 'Pause' : 'Play'}
+                      onPress={() => playAudio(dream)}
+                      variant={isPlaying ? 'primary' : 'glass'}
+                      size="medium"
+                      loading={isAudioLoading && playingId === dream.id}
+                    />
+                    {isThisDream && (
+                      <Text style={styles.modalTimeDisplay}>
+                        {formatTime(status.currentTime)} / {formatTime(status.duration)}
+                      </Text>
+                    )}
+                  </View>
+
+                  {isThisDream && (
+                    <View style={styles.modalProgressBar}>
+                      <View style={[styles.modalProgressFill, { width: `${progressPercent}%` }]} />
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Engagement Section */}
+              <View style={styles.modalEngagementSection}>
+                {dream.enable_engagement && (
+                  <TouchableOpacity style={styles.engagementAction}>
+                    <Ionicons name="heart-outline" size={20} color={theme.danger} />
+                    <Text style={styles.engagementActionText}>{dream.likeCount || 0} Likes</Text>
+                  </TouchableOpacity>
+                )}
+
+                {(dream.interpretationCount ?? 0) > 0 && dream.interpretation_mode !== 'disabled' && (
+                  <TouchableOpacity style={styles.engagementAction}>
+                    <Ionicons name="chatbubble-outline" size={20} color={theme.gold} />
+                    <Text style={styles.engagementActionText}>{dream.interpretationCount ?? 0} Interpretations</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Interpretations Preview (if enabled) */}
+              {dream.interpretation_mode !== 'disabled' && ((dream.interpretationCount ?? 0) > 0) && (
+                <View style={styles.interpretationsPreview}>
+                  <Text style={styles.interpretationsTitle}>Community Interpretations</Text>
+                  <Text style={styles.interpretationsSubtitle}>Tap to view all {dream.interpretationCount ?? 0} interpretations</Text>
+                </View>
+              )}
+            </ScrollView>
+          </LinearGradient>
+        </SafeAreaView>
+      </Modal>
     );
   };
 
-  // Feed Content
   const FeedContent = () => {
     if (feedLoading) {
       return (
@@ -404,27 +490,50 @@ export default function MainScreen({ navigation }: any) {
     }
 
     if (feedError) {
-      return <ErrorState message={feedError} onRetry={fetchFeedDreams} type="feed" />;
+      return (
+        <View style={styles.errorContainer}>
+          <Ionicons name="cloud-offline-outline" size={48} color={theme.textSubtle} />
+          <Text style={styles.errorTitle}>Connection Issue</Text>
+          <Text style={styles.errorSubtitle}>{feedError}</Text>
+          <PillButton title="Try Again" onPress={fetchFeedDreams} variant="primary" size="medium" style={{ marginTop: 20 }} />
+        </View>
+      );
     }
 
     if (feedDreams.length === 0) {
-      return <EmptyState type="feed" />;
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="moon-outline" size={48} color={theme.textSubtle} />
+          <Text style={styles.emptyTitle}>No dreams in the feed yet</Text>
+          <Text style={styles.emptySubtitle}>Be the first to share a dream with the community</Text>
+          <PillButton title="Share a Dream" onPress={() => navigation.navigate('RecordDream')} variant="primary" size="medium" style={{ marginTop: 20 }} />
+        </View>
+      );
     }
 
     return (
       <FlatList
         data={feedDreams}
-        renderItem={({ item }) => <DreamCard item={item} />}
+        renderItem={({ item }) => (
+          <CompactDreamCard
+            item={item}
+            onPress={() => {
+              setSelectedDream(item);
+              setModalVisible(true);
+            }}
+          />
+        )}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         refreshing={feedLoading}
         onRefresh={fetchFeedDreams}
         showsVerticalScrollIndicator={false}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
       />
     );
   };
 
-  // My Dreams Content
   const MyDreamsContent = () => {
     if (myDreamsLoading) {
       return (
@@ -436,87 +545,83 @@ export default function MainScreen({ navigation }: any) {
     }
 
     if (myDreamsError) {
-      return <ErrorState message={myDreamsError} onRetry={fetchMyDreams} type="mine" />;
+      return (
+        <View style={styles.errorContainer}>
+          <Ionicons name="cloud-offline-outline" size={48} color={theme.textSubtle} />
+          <Text style={styles.errorTitle}>Connection Issue</Text>
+          <Text style={styles.errorSubtitle}>{myDreamsError}</Text>
+          <PillButton title="Try Again" onPress={fetchMyDreams} variant="primary" size="medium" style={{ marginTop: 20 }} />
+        </View>
+      );
     }
 
     if (myDreams.length === 0) {
-      return <EmptyState type="mine" />;
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="book-outline" size={48} color={theme.textSubtle} />
+          <Text style={styles.emptyTitle}>No dreams recorded yet</Text>
+          <Text style={styles.emptySubtitle}>Start capturing your dreams by tapping Record below</Text>
+          <PillButton title="Record Your First Dream" onPress={() => navigation.navigate('RecordDream')} variant="primary" size="medium" style={{ marginTop: 20 }} />
+        </View>
+      );
     }
 
     return (
       <FlatList
         data={myDreams}
-        renderItem={({ item }) => <DreamCard item={item} showDelete />}
+        renderItem={({ item }) => (
+          <CompactDreamCard
+            item={item}
+            showDelete
+            onPress={() => {
+              setSelectedDream(item);
+              setModalVisible(true);
+            }}
+          />
+        )}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         refreshing={myDreamsLoading}
         onRefresh={fetchMyDreams}
         showsVerticalScrollIndicator={false}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
       />
     );
   };
 
   return (
-    <LinearGradient
-      colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]}
-      style={styles.container}
-    >
+    <LinearGradient colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        {/* Header */}
+        {/* New Header Layout */}
         <View style={styles.header}>
-          <Text style={styles.logo}>Àlá</Text>
-          
-          {/* Swipeable Pill Tabs */}
+          <TouchableOpacity onPress={() => navigation.navigate('Profile')} activeOpacity={0.8}>
+            <Image source={{ uri: userAvatar }} style={styles.headerAvatar} />
+          </TouchableOpacity>
+
+          {/* Tab Switcher */}
           <View style={styles.tabContainer}>
-            <BlurView intensity={40} tint="dark" style={styles.tabBlur}>
-              <View style={styles.tabInner}>
-                {/* Animated Indicator */}
-                <Animated.View 
-                  style={[
-                    styles.tabIndicator,
-                    { transform: [{ translateX: tabIndicatorTranslate }] }
-                  ]} 
-                />
-                
-                <TouchableOpacity
-                  style={styles.tab}
-                  onPress={() => switchTab(0)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.tabText, activeTab === 0 && styles.tabTextActive]}>
-                    Feed
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={styles.tab}
-                  onPress={() => switchTab(1)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.tabText, activeTab === 1 && styles.tabTextActive]}>
-                    My Dreams
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </BlurView>
+            <TouchableOpacity style={styles.tab} onPress={() => switchTab(0)} activeOpacity={0.7}>
+              <Text style={[styles.tabText, activeTab === 0 && styles.tabTextActive]}>Feed</Text>
+            </TouchableOpacity>
+
+            <View style={styles.tabDivider} />
+
+            <TouchableOpacity style={styles.tab} onPress={() => switchTab(1)} activeOpacity={0.7}>
+              <Text style={[styles.tabText, activeTab === 1 && styles.tabTextActive]}>My Dreams</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Profile Avatar */}
-          <TouchableOpacity 
-            onPress={() => navigation.navigate('Profile')}
-            activeOpacity={0.8}
-          >
-            <Image source={{ uri: userAvatar }} style={styles.profileAvatar} />
+          <TouchableOpacity onPress={() => Alert.alert('Notifications', 'Coming soon!')} activeOpacity={0.8}>
+            <View style={styles.notificationBell}>
+              <Ionicons name="notifications-outline" size={24} color={theme.textPrimary} />
+              <View style={styles.notificationDot} />
+            </View>
           </TouchableOpacity>
         </View>
 
         {/* Swipeable Pages */}
-        <PagerView
-          ref={pagerRef}
-          style={styles.pagerView}
-          initialPage={0}
-          onPageSelected={onPageSelected}
-        >
+        <PagerView ref={pagerRef} style={styles.pagerView} initialPage={0} onPageSelected={onPageSelected}>
           <View key="feed" style={styles.page}>
             <FeedContent />
           </View>
@@ -525,35 +630,50 @@ export default function MainScreen({ navigation }: any) {
           </View>
         </PagerView>
 
-        {/* Floating Buttons */}
-        <View style={styles.floatingButtons}>
-          <PillButton
-            title="Circles"
-            icon="+"
-            onPress={() => {}}
-            variant="glass"
-            size="medium"
-          />
-          <PillButton
-            title="Record"
-            icon="●"
-            onPress={() => navigation.navigate('RecordDream')}
-            variant="primary"
-            size="large"
-          />
+        {/* Bottom Nav with Logo */}
+        <View style={styles.bottomNav}>
+          <TouchableOpacity style={styles.bottomNavBtn} onPress={handleCirclesPress} activeOpacity={0.8}>
+            <LinearGradient colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']} style={styles.bottomNavGradient}>
+              <Ionicons name="people-outline" size={20} color={theme.textPrimary} />
+              <Text style={styles.bottomNavText}>Circles</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          {/* Glowy Logo */}
+          <View style={styles.logoContainer}>
+            <LinearGradient colors={['rgba(212, 175, 55, 0.3)', 'rgba(212, 175, 55, 0.1)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.logoGlow}>
+              <Text style={styles.logoText}>Àlá</Text>
+            </LinearGradient>
+          </View>
+
+          <TouchableOpacity style={styles.bottomNavBtn} onPress={() => navigation.navigate('RecordDream')} activeOpacity={0.8}>
+            <LinearGradient colors={[theme.primary, '#3b82f6']} style={styles.bottomNavGradient}>
+              <Ionicons name="mic" size={20} color="#fff" />
+              <Text style={[styles.bottomNavText, { color: '#fff' }]}>Record</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
+
+      {/* Dream Detail Modal */}
+      <DreamModal
+        dream={selectedDream}
+        visible={modalVisible}
+        onClose={() => {
+          setModalVisible(false);
+          setSelectedDream(null);
+        }}
+        onDelete={() => selectedDream && deleteDream(selectedDream.id)}
+      />
     </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  safeArea: { flex: 1 },
+
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -561,210 +681,215 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
-  logo: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: theme.textPrimary,
-    letterSpacing: -1,
-  },
-  tabContainer: {
-    borderRadius: 25,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
-  },
-  tabBlur: {
-    overflow: 'hidden',
-  },
-  tabInner: {
-    flexDirection: 'row',
-    backgroundColor: theme.glass,
-    position: 'relative',
-    paddingVertical: 4,
-    paddingHorizontal: 4,
-  },
-  tabIndicator: {
-    position: 'absolute',
-    top: 4,
-    left: 0,
-    width: 76,
-    height: 36,
-    backgroundColor: 'rgba(96, 165, 250, 0.25)',
-    borderRadius: 20,
-  },
-  tab: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    zIndex: 1,
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.textSubtle,
-  },
-  tabTextActive: {
-    color: theme.primary,
-  },
-  profileAvatar: {
+  headerAvatar: {
     width: 40,
     height: 40,
     borderRadius: 20,
     borderWidth: 2,
     borderColor: theme.glassBorder,
   },
-  pagerView: {
-    flex: 1,
+  tabContainer: { flexDirection: 'row', alignItems: 'center' },
+  tab: { paddingHorizontal: 12, paddingVertical: 8 },
+  tabDivider: { width: 1, height: 16, backgroundColor: theme.glassBorder },
+  tabText: { fontSize: 14, fontWeight: '600', color: theme.textMuted },
+  tabTextActive: { color: theme.textPrimary },
+  notificationBell: { position: 'relative' },
+  notificationDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.danger,
   },
-  page: {
-    flex: 1,
+
+  // Pager
+  pagerView: { flex: 1 },
+  page: { flex: 1 },
+
+  // List
+  list: { paddingHorizontal: 16, paddingVertical: 12, paddingBottom: 100 },
+
+  // Compact Card (3D Effect)
+  compactCard: {
+    marginBottom: 12,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: theme.glass,
+    borderWidth: 1,
+    borderColor: theme.glassBorder,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 12,
   },
-  list: {
-    paddingHorizontal: 16,
-    paddingBottom: 120,
-    paddingTop: 8,
+  compactCardPlaying: {
+    borderColor: theme.primary,
+    shadowColor: theme.primary,
+    shadowOpacity: 0.3,
+    elevation: 16,
   },
-  dreamCard: {
-    marginBottom: 16,
-  },
-  cardHeader: {
+  cardGradient: { padding: 16 },
+
+  compactHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  userRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    marginRight: 12,
+  compactUserRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  compactAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10,
     backgroundColor: theme.glass,
   },
-  userInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.textPrimary,
-  },
-  dreamDate: {
-    fontSize: 13,
-    color: theme.textSubtle,
-    marginTop: 2,
-  },
-  badge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  badgePublic: {
-    backgroundColor: theme.glowBlue,
-  },
-  badgePrivate: {
-    backgroundColor: theme.glowGold,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: theme.textSecondary,
-  },
-  dreamTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.textPrimary,
-    marginBottom: 8,
-  },
-  dreamContent: {
-    fontSize: 14,
-    color: theme.textSecondary,
-    lineHeight: 21,
-    marginBottom: 12,
-  },
-  audioSection: {
-    marginTop: 8,
-  },
-  audioControls: {
+  compactUserInfo: { flex: 1 },
+  compactUserName: { fontSize: 14, fontWeight: '600', color: theme.textPrimary },
+  compactDate: { fontSize: 12, color: theme.textSubtle, marginTop: 2 },
+  compactBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  badgePublic: { backgroundColor: theme.glowBlue },
+  badgePrivate: { backgroundColor: theme.glowGold },
+  compactBadgeText: { fontSize: 11, fontWeight: '600', color: theme.textSecondary },
+
+  compactContent: { marginBottom: 10 },
+  compactTitle: { fontSize: 16, fontWeight: '700', color: theme.textPrimary, marginBottom: 6 },
+  compactExcerpt: { fontSize: 13, color: theme.textSecondary, lineHeight: 18 },
+
+  audioIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  audioIndicatorText: { fontSize: 12, color: theme.primary, fontWeight: '500' },
+
+  compactFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  engagementPills: { flexDirection: 'row', gap: 8 },
+  engagementPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 10,
   },
-  timeDisplay: {
-    fontSize: 13,
-    color: theme.textSecondary,
-    fontVariant: ['tabular-nums'],
-    flex: 1,
-  },
-  deleteBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  deleteText: {
-    fontSize: 14,
-    color: theme.danger,
-    fontWeight: '500',
-  },
-  progressBar: {
-    marginTop: 14,
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: theme.gold,
-    borderRadius: 2,
-  },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    color: theme.textSubtle,
-    fontSize: 14,
-  },
-  stateContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  stateIcon: {
-    fontSize: 64,
-    marginBottom: 20,
-  },
-  stateTitle: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: theme.textPrimary,
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  stateSubtitle: {
-    fontSize: 15,
-    color: theme.textSecondary,
-    textAlign: 'center',
-    marginBottom: 28,
-    lineHeight: 22,
-    paddingHorizontal: 20,
-  },
-  stateActions: {
-    alignItems: 'center',
-  },
-  floatingButtons: {
-    position: 'absolute',
-    bottom: 30,
-    left: 20,
-    right: 20,
+  engagementText: { fontSize: 11, color: theme.textSecondary, fontWeight: '500' },
+
+  // Modal
+  modalContainer: { flex: 1, backgroundColor: theme.background },
+  modalGradient: { flex: 1 },
+  modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.glassBorder,
+  },
+  modalCloseBtn: { padding: 8 },
+  modalDeleteBtn: { padding: 8 },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: theme.textPrimary },
+
+  modalContent: { paddingHorizontal: 20, paddingVertical: 16 },
+  modalUserRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  modalAvatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
+  modalUserName: { fontSize: 16, fontWeight: '600', color: theme.textPrimary },
+  modalDate: { fontSize: 13, color: theme.textSubtle, marginTop: 2 },
+
+  modalAudioSection: { marginVertical: 16, paddingHorizontal: 0 },
+  modalAudioControls: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  modalTimeDisplay: { fontSize: 13, color: theme.textSecondary, fontVariant: ['tabular-nums'], flex: 1 },
+  modalProgressBar: { marginTop: 12, height: 4, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' },
+  modalProgressFill: { height: '100%', backgroundColor: theme.gold, borderRadius: 2 },
+
+  modalEngagementSection: { flexDirection: 'row', gap: 12, marginVertical: 16 },
+  engagementAction: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: theme.glass,
+    borderWidth: 1,
+    borderColor: theme.glassBorder,
+  },
+  engagementActionText: { fontSize: 13, fontWeight: '600', color: theme.textSecondary },
+
+  interpretationsPreview: {
+    marginVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: theme.glowGold,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.3)',
+  },
+  interpretationsTitle: { fontSize: 14, fontWeight: '600', color: theme.textPrimary, marginBottom: 4 },
+  interpretationsSubtitle: { fontSize: 12, color: theme.textSecondary },
+
+  // States
+  loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { marginTop: 12, color: theme.textSubtle, fontSize: 14 },
+  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
+  errorTitle: { fontSize: 18, fontWeight: '600', color: theme.textPrimary, marginTop: 12, marginBottom: 8 },
+  errorSubtitle: { fontSize: 14, color: theme.textSecondary, textAlign: 'center' },
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
+  emptyTitle: { fontSize: 20, fontWeight: '600', color: theme.textPrimary, marginTop: 12, marginBottom: 8 },
+  emptySubtitle: { fontSize: 14, color: theme.textSecondary, textAlign: 'center' },
+
+  // Bottom Nav
+  bottomNav: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    paddingTop: 12,
+    backgroundColor: `${theme.background}dd`,
+    borderTopWidth: 1,
+    borderTopColor: theme.glassBorder,
+  },
+  bottomNavBtn: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.glassBorder,
+    maxWidth: '35%',
+  },
+  bottomNavGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 6,
+  },
+  bottomNavText: { fontSize: 14, fontWeight: '600', color: theme.textPrimary },
+
+  logoContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  logoGlow: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.4)',
+  },
+  logoText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: theme.gold,
+    letterSpacing: -0.5,
+    textShadowColor: 'rgba(212, 175, 55, 0.4)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
   },
 });

@@ -17,6 +17,9 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+.expo-shared/
+.env
+npm-debug.log
 
 # Metro
 .metro-health-check*

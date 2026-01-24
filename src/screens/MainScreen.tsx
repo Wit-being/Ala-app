@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import {
   ScrollView,
   Animated,
   Pressable,
+  TextInput,
+  SectionList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -35,6 +37,7 @@ const theme = {
   glassBorder: 'rgba(255, 255, 255, 0.1)',
   glassBorderLight: 'rgba(255, 255, 255, 0.15)',
   primary: '#60a5fa',
+  primaryDark: '#3b82f6',
   gold: '#d4af37',
   goldLight: '#e6c55a',
   textPrimary: '#f1f5f9',
@@ -43,9 +46,10 @@ const theme = {
   textMuted: '#475569',
   danger: '#ef4444',
   success: '#10b981',
+  purple: '#a78bfa',
   glowBlue: 'rgba(96, 165, 250, 0.15)',
   glowGold: 'rgba(212, 175, 55, 0.15)',
-  shadowDark: 'rgba(0, 0, 0, 0.5)',
+  glowPurple: 'rgba(167, 139, 250, 0.15)',
 };
 
 interface Dream {
@@ -67,6 +71,11 @@ interface DreamWithMeta extends Dream {
   interpretationCount?: number;
 }
 
+interface DreamSection {
+  title: string;
+  data: DreamWithMeta[];
+}
+
 export default function MainScreen({ navigation }: any) {
   const user = useAuthStore((state) => state.user);
   const [activeTab, setActiveTab] = useState(0);
@@ -80,6 +89,8 @@ export default function MainScreen({ navigation }: any) {
   const [isAudioLoading, setIsAudioLoading] = useState<string | null>(null);
   const [selectedDream, setSelectedDream] = useState<DreamWithMeta | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
   const pagerRef = useRef<PagerView>(null);
   const currentAudioUrl = useRef<string | null>(null);
@@ -105,6 +116,125 @@ export default function MainScreen({ navigation }: any) {
       resetAudioState();
     }
   }, [status.didJustFinish]);
+
+  // Calculate journal stats
+  const journalStats = useMemo(() => {
+    const now = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+
+    const dreamsThisMonth = myDreams.filter((d) => {
+      const date = new Date(d.dream_date);
+      return date.getMonth() === thisMonth && date.getFullYear() === thisYear;
+    }).length;
+
+    // Calculate streak
+    let streak = 0;
+    const sortedDates = [...new Set(myDreams.map((d) => d.dream_date.split('T')[0]))].sort().reverse();
+    
+    if (sortedDates.length > 0) {
+      const today = new Date().toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+      
+      if (sortedDates[0] === today || sortedDates[0] === yesterday) {
+        streak = 1;
+        for (let i = 1; i < sortedDates.length; i++) {
+          const prevDate = new Date(sortedDates[i - 1]);
+          const currDate = new Date(sortedDates[i]);
+          const diffDays = Math.floor((prevDate.getTime() - currDate.getTime()) / 86400000);
+          if (diffDays === 1) {
+            streak++;
+          } else {
+            break;
+          }
+        }
+      }
+    }
+
+    // Get unique months for calendar
+    const months = [...new Set(myDreams.map((d) => {
+      const date = new Date(d.dream_date);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }))].sort().reverse();
+
+    return {
+      total: myDreams.length,
+      thisMonth: dreamsThisMonth,
+      streak,
+      months,
+    };
+  }, [myDreams]);
+
+  // Group dreams by time period for journal
+  const groupedDreams = useMemo(() => {
+    let filtered = myDreams;
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (d) =>
+          d.title?.toLowerCase().includes(query) ||
+          d.content?.toLowerCase().includes(query)
+      );
+    }
+
+    // Apply month filter
+    if (selectedMonth) {
+      filtered = filtered.filter((d) => {
+        const date = new Date(d.dream_date);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        return monthKey === selectedMonth;
+      });
+    }
+
+    const now = new Date();
+    const today = now.toDateString();
+    const yesterday = new Date(now.getTime() - 86400000).toDateString();
+    const weekAgo = new Date(now.getTime() - 7 * 86400000);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const sections: DreamSection[] = [];
+    const todayDreams: DreamWithMeta[] = [];
+    const yesterdayDreams: DreamWithMeta[] = [];
+    const thisWeekDreams: DreamWithMeta[] = [];
+    const thisMonthDreams: DreamWithMeta[] = [];
+    const olderByMonth: { [key: string]: DreamWithMeta[] } = {};
+
+    filtered.forEach((dream) => {
+      const dreamDate = new Date(dream.dream_date);
+      const dreamDateStr = dreamDate.toDateString();
+
+      if (dreamDateStr === today) {
+        todayDreams.push(dream);
+      } else if (dreamDateStr === yesterday) {
+        yesterdayDreams.push(dream);
+      } else if (dreamDate >= weekAgo) {
+        thisWeekDreams.push(dream);
+      } else if (dreamDate >= monthStart) {
+        thisMonthDreams.push(dream);
+      } else {
+        const monthKey = dreamDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        if (!olderByMonth[monthKey]) {
+          olderByMonth[monthKey] = [];
+        }
+        olderByMonth[monthKey].push(dream);
+      }
+    });
+
+    if (todayDreams.length > 0) sections.push({ title: 'Today', data: todayDreams });
+    if (yesterdayDreams.length > 0) sections.push({ title: 'Yesterday', data: yesterdayDreams });
+    if (thisWeekDreams.length > 0) sections.push({ title: 'This Week', data: thisWeekDreams });
+    if (thisMonthDreams.length > 0) sections.push({ title: 'Earlier This Month', data: thisMonthDreams });
+
+    Object.keys(olderByMonth)
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+      .forEach((month) => {
+        sections.push({ title: month, data: olderByMonth[month] });
+      });
+
+    return sections;
+  }, [myDreams, searchQuery, selectedMonth]);
 
   const fetchFeedDreams = async () => {
     try {
@@ -167,7 +297,7 @@ export default function MainScreen({ navigation }: any) {
         .select('id, user_id, title, content, audio_url, is_public, dream_date, created_at, status, interpretation_mode, enable_engagement')
         .eq('user_id', user.id)
         .order('dream_date', { ascending: false })
-        .limit(50);
+        .limit(100);
 
       if (error) throw error;
       setMyDreams(data || []);
@@ -270,6 +400,16 @@ export default function MainScreen({ navigation }: any) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  };
+
+  const formatFullDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
   const onPageSelected = (e: any) => {
     setActiveTab(e.nativeEvent.position);
   };
@@ -282,9 +422,9 @@ export default function MainScreen({ navigation }: any) {
     Alert.alert('Coming Soon', 'Dream Circles will be available in the next update.');
   };
 
-  // Dream Card Component
-  const DreamCard = React.memo(
-    ({ item, showStatus = false, onPress }: { item: DreamWithMeta; showStatus?: boolean; onPress: () => void }) => {
+  // Feed Dream Card (Social Style)
+  const FeedDreamCard = React.memo(
+    ({ item, onPress }: { item: DreamWithMeta; onPress: () => void }) => {
       const isPlaying = playingId === item.id && status.playing;
       const isThisPlaying = playingId === item.id;
       const isLoading = isAudioLoading === item.id;
@@ -302,27 +442,16 @@ export default function MainScreen({ navigation }: any) {
       const scaleAnim = useRef(new Animated.Value(1)).current;
 
       const handlePressIn = () => {
-        Animated.spring(scaleAnim, {
-          toValue: 0.97,
-          useNativeDriver: true,
-        }).start();
+        Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
       };
 
       const handlePressOut = () => {
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          friction: 3,
-          useNativeDriver: true,
-        }).start();
+        Animated.spring(scaleAnim, { toValue: 1, friction: 3, useNativeDriver: true }).start();
       };
 
       return (
-        <Pressable
-          onPress={onPress}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-        >
-          <Animated.View style={[styles.card, { transform: [{ scale: scaleAnim }] }]}>
+        <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
+          <Animated.View style={[styles.feedCard, { transform: [{ scale: scaleAnim }] }]}>
             <View style={styles.cardHighlight} />
             <LinearGradient
               colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.02)']}
@@ -330,8 +459,7 @@ export default function MainScreen({ navigation }: any) {
               end={{ x: 1, y: 1 }}
               style={styles.cardInner}
             >
-              {/* Header */}
-              <View style={styles.cardHeader}>
+              <View style={styles.feedCardHeader}>
                 <View style={styles.userRow}>
                   <Image source={{ uri: avatarUrl }} style={styles.avatar} />
                   <View>
@@ -339,29 +467,14 @@ export default function MainScreen({ navigation }: any) {
                     <Text style={styles.dateText}>{formatDate(item.dream_date)}</Text>
                   </View>
                 </View>
-
-                {showStatus && (
-                  <View style={styles.statusBadge}>
-                    <View style={[styles.statusDot, item.is_public ? styles.statusPublic : styles.statusPrivate]} />
-                    <Text style={styles.statusText}>{item.is_public ? 'Public' : 'Private'}</Text>
-                  </View>
-                )}
               </View>
 
-              {/* Content */}
               <View style={styles.cardBody}>
-                {item.title && (
-                  <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-                )}
-                {hasContent && (
-                  <Text style={styles.cardExcerpt} numberOfLines={2}>{item.content}</Text>
-                )}
-                {!hasContent && !hasAudio && (
-                  <Text style={styles.cardExcerptMuted}>No content yet</Text>
-                )}
+                {item.title && <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>}
+                {hasContent && <Text style={styles.cardExcerpt} numberOfLines={2}>{item.content}</Text>}
+                {!hasContent && !hasAudio && <Text style={styles.cardExcerptMuted}>No content yet</Text>}
               </View>
 
-              {/* Audio Player */}
               {hasAudio && (
                 <View style={styles.audioPlayer}>
                   <TouchableOpacity
@@ -375,20 +488,17 @@ export default function MainScreen({ navigation }: any) {
                       <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" />
                     )}
                   </TouchableOpacity>
-
                   <View style={styles.progressWrap}>
                     <View style={styles.progressTrack}>
                       <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
                     </View>
                   </View>
-
                   <Text style={styles.durationText}>
                     {isThisPlaying ? formatDuration(status.currentTime) : formatDuration(status.duration || 0)}
                   </Text>
                 </View>
               )}
 
-              {/* Footer */}
               <View style={styles.cardFooter}>
                 <View style={styles.engagementRow}>
                   {item.enable_engagement && (item.likeCount ?? 0) > 0 && (
@@ -411,6 +521,94 @@ export default function MainScreen({ navigation }: any) {
         </Pressable>
       );
     }
+  );
+
+  // Journal Entry Card (Compact, Elegant)
+  const JournalEntryCard = React.memo(
+    ({ item, onPress }: { item: DreamWithMeta; onPress: () => void }) => {
+      const isPlaying = playingId === item.id && status.playing;
+      const isThisPlaying = playingId === item.id;
+      const isLoading = isAudioLoading === item.id;
+      const hasAudio = !!item.audio_url;
+      const hasContent = !!item.content;
+
+      const progressPercent = isThisPlaying && status.duration > 0
+        ? Math.min(100, (status.currentTime / status.duration) * 100)
+        : 0;
+
+      return (
+        <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+          <View style={[styles.journalCard, isPlaying && styles.journalCardActive]}>
+            {/* Time indicator */}
+            <View style={styles.journalTimeCol}>
+              <Text style={styles.journalTime}>{formatTime(item.created_at)}</Text>
+              <View style={styles.journalTimeLine} />
+            </View>
+
+            {/* Content */}
+            <View style={styles.journalContent}>
+              <View style={styles.journalHeader}>
+                {item.title ? (
+                  <Text style={styles.journalTitle} numberOfLines={1}>{item.title}</Text>
+                ) : (
+                  <Text style={styles.journalTitleMuted}>Untitled Dream</Text>
+                )}
+                
+                <View style={styles.journalBadges}>
+                  {hasAudio && (
+                    <View style={styles.journalBadge}>
+                      <Ionicons name="mic" size={10} color={theme.primary} />
+                    </View>
+                  )}
+                  <View style={[styles.journalBadge, item.is_public ? styles.badgePublic : styles.badgePrivate]}>
+                    <Ionicons name={item.is_public ? 'globe-outline' : 'lock-closed'} size={10} color={item.is_public ? theme.primary : theme.gold} />
+                  </View>
+                </View>
+              </View>
+
+              {hasContent && (
+                <Text style={styles.journalExcerpt} numberOfLines={2}>{item.content}</Text>
+              )}
+
+              {/* Inline mini audio player */}
+              {hasAudio && (
+                <View style={styles.journalAudio}>
+                  <TouchableOpacity
+                    style={[styles.journalPlayBtn, isPlaying && styles.journalPlayBtnActive]}
+                    onPress={() => playAudio(item)}
+                  >
+                    {isLoading ? (
+                      <ActivityIndicator size="small" color={theme.textPrimary} />
+                    ) : (
+                      <Ionicons name={isPlaying ? 'pause' : 'play'} size={14} color={theme.textPrimary} />
+                    )}
+                  </TouchableOpacity>
+                  <View style={styles.journalProgressTrack}>
+                    <View style={[styles.journalProgressFill, { width: `${progressPercent}%` }]} />
+                  </View>
+                  <Text style={styles.journalDuration}>
+                    {isThisPlaying ? formatDuration(status.currentTime) : formatDuration(status.duration || 0)}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <Ionicons name="chevron-forward" size={16} color={theme.textMuted} style={styles.journalChevron} />
+          </View>
+        </TouchableOpacity>
+      );
+    }
+  );
+
+  // Stats Card Component
+  const StatsCard = ({ icon, label, value, color }: { icon: string; label: string; value: number | string; color: string }) => (
+    <View style={[styles.statCard, { borderColor: color + '30' }]}>
+      <View style={[styles.statIconWrap, { backgroundColor: color + '20' }]}>
+        <Ionicons name={icon as any} size={18} color={color} />
+      </View>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
   );
 
   // Modal Component
@@ -451,7 +649,7 @@ export default function MainScreen({ navigation }: any) {
                 <Image source={{ uri: avatarUrl }} style={styles.modalAvatar} />
                 <View>
                   <Text style={styles.modalUserName}>{userName}</Text>
-                  <Text style={styles.modalDate}>{formatDate(dream.dream_date)}</Text>
+                  <Text style={styles.modalDate}>{formatFullDate(dream.dream_date)}</Text>
                 </View>
               </View>
 
@@ -470,7 +668,6 @@ export default function MainScreen({ navigation }: any) {
                       <Ionicons name={isPlaying ? 'pause' : 'play'} size={28} color="#fff" />
                     )}
                   </TouchableOpacity>
-
                   <View style={styles.modalAudioInfo}>
                     <View style={styles.modalProgressTrack}>
                       <View style={[styles.modalProgressFill, { width: `${progressPercent}%` }]} />
@@ -506,7 +703,8 @@ export default function MainScreen({ navigation }: any) {
     );
   };
 
-  const renderFeed = () => {
+  // Feed Content
+  const FeedContent = () => {
     if (feedLoading) {
       return (
         <View style={styles.center}>
@@ -546,10 +744,10 @@ export default function MainScreen({ navigation }: any) {
       <FlatList
         data={feedDreams}
         renderItem={({ item }) => (
-          <DreamCard item={item} onPress={() => { setSelectedDream(item); setModalVisible(true); }} />
+          <FeedDreamCard item={item} onPress={() => { setSelectedDream(item); setModalVisible(true); }} />
         )}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={styles.feedList}
         refreshing={feedLoading}
         onRefresh={fetchFeedDreams}
         showsVerticalScrollIndicator={false}
@@ -557,12 +755,13 @@ export default function MainScreen({ navigation }: any) {
     );
   };
 
-  const renderMyDreams = () => {
+  // Journal Content (My Dreams - Premium Style)
+  const JournalContent = () => {
     if (myDreamsLoading) {
       return (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color={theme.primary} />
-          <Text style={styles.loadingText}>Loading your dreams...</Text>
+          <ActivityIndicator size="large" color={theme.gold} />
+          <Text style={styles.loadingText}>Loading your journal...</Text>
         </View>
       );
     }
@@ -582,29 +781,118 @@ export default function MainScreen({ navigation }: any) {
 
     if (myDreams.length === 0) {
       return (
-        <View style={styles.center}>
-          <Ionicons name="book-outline" size={48} color={theme.textSubtle} />
-          <Text style={styles.stateTitle}>No dreams recorded</Text>
-          <Text style={styles.stateSubtitle}>Start capturing your dreams</Text>
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('RecordDream')}>
-            <Text style={styles.primaryBtnText}>Record First Dream</Text>
+        <ScrollView style={styles.journalScrollEmpty} contentContainerStyle={styles.emptyJournal}>
+          <View style={styles.emptyJournalIcon}>
+            <Ionicons name="book-outline" size={64} color={theme.gold} />
+          </View>
+          <Text style={styles.emptyJournalTitle}>Your Dream Journal</Text>
+          <Text style={styles.emptyJournalText}>
+            Start capturing your dreams to unlock insights about your subconscious mind. 
+            Recording dreams regularly can help you remember them better and discover patterns.
+          </Text>
+          
+          <View style={styles.emptyBenefits}>
+            <View style={styles.benefitItem}>
+              <Ionicons name="sparkles" size={20} color={theme.gold} />
+              <Text style={styles.benefitText}>Improve dream recall</Text>
+            </View>
+            <View style={styles.benefitItem}>
+              <Ionicons name="analytics-outline" size={20} color={theme.primary} />
+              <Text style={styles.benefitText}>Discover patterns</Text>
+            </View>
+            <View style={styles.benefitItem}>
+              <Ionicons name="bulb-outline" size={20} color={theme.purple} />
+              <Text style={styles.benefitText}>Gain insights</Text>
+            </View>
+          </View>
+
+          <TouchableOpacity style={styles.emptyRecordBtn} onPress={() => navigation.navigate('RecordDream')}>
+            <LinearGradient colors={[theme.gold, '#b8962e']} style={styles.emptyRecordGradient}>
+              <Ionicons name="mic" size={20} color="#fff" />
+              <Text style={styles.emptyRecordText}>Record Your First Dream</Text>
+            </LinearGradient>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       );
     }
 
     return (
-      <FlatList
-        data={myDreams}
-        renderItem={({ item }) => (
-          <DreamCard item={item} showStatus onPress={() => { setSelectedDream(item); setModalVisible(true); }} />
+      <View style={styles.journalContainer}>
+        {/* Stats Dashboard */}
+        <View style={styles.statsRow}>
+          <StatsCard icon="book" label="Total" value={journalStats.total} color={theme.primary} />
+          <StatsCard icon="flame" label="Streak" value={`${journalStats.streak}d`} color={theme.gold} />
+          <StatsCard icon="calendar" label="This Month" value={journalStats.thisMonth} color={theme.purple} />
+        </View>
+
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={18} color={theme.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search your dreams..."
+            placeholderTextColor={theme.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={18} color={theme.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Month Filter Pills */}
+        {journalStats.months.length > 1 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.monthFilter} contentContainerStyle={styles.monthFilterContent}>
+            <TouchableOpacity
+              style={[styles.monthPill, !selectedMonth && styles.monthPillActive]}
+              onPress={() => setSelectedMonth(null)}
+            >
+              <Text style={[styles.monthPillText, !selectedMonth && styles.monthPillTextActive]}>All</Text>
+            </TouchableOpacity>
+            {journalStats.months.slice(0, 6).map((month) => {
+              const [year, m] = month.split('-');
+              const label = new Date(parseInt(year), parseInt(m) - 1).toLocaleDateString('en-US', { month: 'short' });
+              return (
+                <TouchableOpacity
+                  key={month}
+                  style={[styles.monthPill, selectedMonth === month && styles.monthPillActive]}
+                  onPress={() => setSelectedMonth(selectedMonth === month ? null : month)}
+                >
+                  <Text style={[styles.monthPillText, selectedMonth === month && styles.monthPillTextActive]}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         )}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        refreshing={myDreamsLoading}
-        onRefresh={fetchMyDreams}
-        showsVerticalScrollIndicator={false}
-      />
+
+        {/* Section List */}
+        {groupedDreams.length === 0 ? (
+          <View style={styles.noResults}>
+            <Ionicons name="search-outline" size={32} color={theme.textMuted} />
+            <Text style={styles.noResultsText}>No dreams found</Text>
+          </View>
+        ) : (
+          <SectionList
+            sections={groupedDreams}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <JournalEntryCard item={item} onPress={() => { setSelectedDream(item); setModalVisible(true); }} />
+            )}
+            renderSectionHeader={({ section: { title } }) => (
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>{title}</Text>
+              </View>
+            )}
+            contentContainerStyle={styles.journalList}
+            stickySectionHeadersEnabled={false}
+            refreshing={myDreamsLoading}
+            onRefresh={fetchMyDreams}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </View>
     );
   };
 
@@ -623,8 +911,8 @@ export default function MainScreen({ navigation }: any) {
               {activeTab === 0 && <View style={styles.tabDot} />}
             </TouchableOpacity>
             <TouchableOpacity style={styles.tab} onPress={() => switchTab(1)}>
-              <Text style={[styles.tabText, activeTab === 1 && styles.tabActive]}>My Dreams</Text>
-              {activeTab === 1 && <View style={styles.tabDot} />}
+              <Text style={[styles.tabText, activeTab === 1 && styles.tabActiveGold]}>Journal</Text>
+              {activeTab === 1 && <View style={[styles.tabDot, styles.tabDotGold]} />}
             </TouchableOpacity>
           </View>
 
@@ -638,11 +926,11 @@ export default function MainScreen({ navigation }: any) {
 
         {/* Pages */}
         <PagerView ref={pagerRef} style={styles.pager} initialPage={0} onPageSelected={onPageSelected}>
-          <View key="feed" style={styles.page}>{renderFeed()}</View>
-          <View key="mine" style={styles.page}>{renderMyDreams()}</View>
+          <View key="feed" style={styles.page}>{FeedContent()}</View>
+          <View key="journal" style={styles.page}>{JournalContent()}</View>
         </PagerView>
 
-        {/* Bottom Nav - Glassmorphism */}
+        {/* Bottom Nav */}
         <View style={styles.bottomNavContainer}>
           <View style={styles.bottomNav}>
             <TouchableOpacity style={styles.navBtn} onPress={handleCirclesPress} activeOpacity={0.7}>
@@ -652,7 +940,6 @@ export default function MainScreen({ navigation }: any) {
               </View>
             </TouchableOpacity>
 
-            {/* Logo - just text, no pill */}
             <Text style={styles.logoText}>Àlá</Text>
 
             <TouchableOpacity style={styles.navBtn} onPress={() => navigation.navigate('RecordDream')} activeOpacity={0.7}>
@@ -692,7 +979,7 @@ const styles = StyleSheet.create({
   tabRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 24,
+    gap: 28,
   },
   tab: {
     alignItems: 'center',
@@ -706,12 +993,18 @@ const styles = StyleSheet.create({
   tabActive: {
     color: theme.textPrimary,
   },
+  tabActiveGold: {
+    color: theme.gold,
+  },
   tabDot: {
     width: 4,
     height: 4,
     borderRadius: 2,
     backgroundColor: theme.primary,
     marginTop: 4,
+  },
+  tabDotGold: {
+    backgroundColor: theme.gold,
   },
   bellWrap: {
     position: 'relative',
@@ -730,15 +1023,15 @@ const styles = StyleSheet.create({
   pager: { flex: 1 },
   page: { flex: 1 },
 
-  // List
-  list: {
+  // Feed List
+  feedList: {
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 140,
   },
 
-  // Card
-  card: {
+  // Feed Card
+  feedCard: {
     marginBottom: 16,
     borderRadius: 24,
     backgroundColor: theme.glass,
@@ -763,7 +1056,7 @@ const styles = StyleSheet.create({
   cardInner: {
     padding: 16,
   },
-  cardHeader: {
+  feedCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -789,28 +1082,6 @@ const styles = StyleSheet.create({
     color: theme.textSubtle,
     marginTop: 1,
   },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusPublic: {
-    backgroundColor: theme.primary,
-  },
-  statusPrivate: {
-    backgroundColor: theme.gold,
-  },
-  statusText: {
-    fontSize: 11,
-    color: theme.textSubtle,
-    fontWeight: '500',
-  },
-
   cardBody: {
     marginBottom: 12,
   },
@@ -830,8 +1101,6 @@ const styles = StyleSheet.create({
     color: theme.textMuted,
     fontStyle: 'italic',
   },
-
-  // Audio Player on card
   audioPlayer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -872,7 +1141,6 @@ const styles = StyleSheet.create({
     minWidth: 36,
     textAlign: 'right',
   },
-
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -891,6 +1159,311 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.textSubtle,
     fontWeight: '500',
+  },
+
+  // Journal Styles
+  journalContainer: {
+    flex: 1,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    gap: 10,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: theme.glass,
+    borderRadius: 16,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  statIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: theme.textPrimary,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: theme.textSubtle,
+    marginTop: 2,
+  },
+
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.glass,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: theme.glassBorder,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: theme.textPrimary,
+    marginLeft: 8,
+  },
+
+  monthFilter: {
+    marginTop: 12,
+    maxHeight: 36,
+  },
+  monthFilterContent: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  monthPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: theme.glass,
+    borderWidth: 1,
+    borderColor: theme.glassBorder,
+  },
+  monthPillActive: {
+    backgroundColor: theme.glowGold,
+    borderColor: theme.gold + '50',
+  },
+  monthPillText: {
+    fontSize: 13,
+    color: theme.textSubtle,
+    fontWeight: '500',
+  },
+  monthPillTextActive: {
+    color: theme.gold,
+  },
+
+  journalList: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 140,
+  },
+
+  sectionHeader: {
+    paddingVertical: 8,
+    marginTop: 8,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.textSubtle,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  journalCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: theme.glass,
+    borderRadius: 16,
+    marginBottom: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: theme.glassBorder,
+  },
+  journalCardActive: {
+    borderColor: theme.gold + '50',
+    backgroundColor: theme.glowGold,
+  },
+  journalTimeCol: {
+    alignItems: 'center',
+    marginRight: 12,
+    width: 50,
+  },
+  journalTime: {
+    fontSize: 11,
+    color: theme.textSubtle,
+    fontWeight: '500',
+  },
+  journalTimeLine: {
+    width: 2,
+    height: 40,
+    backgroundColor: theme.glassBorder,
+    marginTop: 6,
+    borderRadius: 1,
+  },
+  journalContent: {
+    flex: 1,
+  },
+  journalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  journalTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.textPrimary,
+    flex: 1,
+    marginRight: 8,
+  },
+  journalTitleMuted: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.textMuted,
+    fontStyle: 'italic',
+    flex: 1,
+  },
+  journalBadges: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  journalBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: theme.glowBlue,
+  },
+  badgePublic: {
+    backgroundColor: theme.glowBlue,
+  },
+  badgePrivate: {
+    backgroundColor: theme.glowGold,
+  },
+  journalExcerpt: {
+    fontSize: 13,
+    color: theme.textSecondary,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  journalAudio: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  journalPlayBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  journalPlayBtnActive: {
+    backgroundColor: theme.gold,
+  },
+  journalProgressTrack: {
+    flex: 1,
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 1.5,
+    overflow: 'hidden',
+  },
+  journalProgressFill: {
+    height: '100%',
+    backgroundColor: theme.gold,
+  },
+  journalDuration: {
+    fontSize: 10,
+    color: theme.textMuted,
+    fontVariant: ['tabular-nums'],
+    width: 32,
+    textAlign: 'right',
+  },
+  journalChevron: {
+    marginLeft: 8,
+    alignSelf: 'center',
+  },
+
+  noResults: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 60,
+  },
+  noResultsText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: theme.textMuted,
+  },
+
+  // Empty Journal State
+  journalScrollEmpty: {
+    flex: 1,
+  },
+  emptyJournal: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingBottom: 100,
+  },
+  emptyJournalIcon: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: theme.glowGold,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  emptyJournalTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: theme.textPrimary,
+    marginBottom: 12,
+  },
+  emptyJournalText: {
+    fontSize: 15,
+    color: theme.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32,
+  },
+  emptyBenefits: {
+    width: '100%',
+    gap: 12,
+    marginBottom: 32,
+  },
+  benefitItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: theme.glass,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.glassBorder,
+  },
+  benefitText: {
+    fontSize: 14,
+    color: theme.textPrimary,
+    fontWeight: '500',
+  },
+  emptyRecordBtn: {
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  emptyRecordGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+  },
+  emptyRecordText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 
   // Bottom Nav

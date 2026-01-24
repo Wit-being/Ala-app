@@ -11,6 +11,7 @@ import SignupScreen from '../screens/SignupScreen';
 import MainScreen from '../screens/MainScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import RecordDreamScreen from '../screens/RecordDreamScreen';
+import NotificationScreen from '../screens/NotificationScreen';
 
 const Stack = createStackNavigator();
 
@@ -54,6 +55,15 @@ function AppNavigator() {
               <Stack.Screen 
                 name="RecordDream" 
                 component={RecordDreamScreen}
+                options={{
+                  presentation: 'modal',
+                  gestureEnabled: true,
+                  gestureDirection: 'vertical',
+                }}
+              />
+              <Stack.Screen 
+                name="Notifications" 
+                component={NotificationScreen}
                 options={{
                   presentation: 'modal',
                   gestureEnabled: true,

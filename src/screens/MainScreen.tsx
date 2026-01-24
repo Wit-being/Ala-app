@@ -1002,11 +1002,11 @@ export default function MainScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => Alert.alert('Notifications', 'Coming soon!')}>
+          <TouchableOpacity onPress={() => navigation.navigate('Notifications')}>
             <View style={styles.bellWrap}>
               <Ionicons name="notifications-outline" size={22} color={theme.textPrimary} />
-              <View style={styles.bellDot} />
-            </View>
+            <View style={styles.bellDot} />
+          </View>
           </TouchableOpacity>
         </View>
 

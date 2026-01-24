@@ -29,8 +29,6 @@ const { width, height } = Dimensions.get('window');
 
 const theme = {
   background: '#050a15',
-  backgroundGradientStart: '#050a15',
-  backgroundGradientEnd: '#0a1628',
   glass: 'rgba(255, 255, 255, 0.06)',
   glassMedium: 'rgba(255, 255, 255, 0.08)',
   glassStrong: 'rgba(255, 255, 255, 0.12)',
@@ -50,6 +48,72 @@ const theme = {
   glowBlue: 'rgba(96, 165, 250, 0.15)',
   glowGold: 'rgba(212, 175, 55, 0.15)',
   glowPurple: 'rgba(167, 139, 250, 0.15)',
+};
+
+// Ambient gradient palettes - dreamy color combinations
+const AMBIENT_GRADIENTS: readonly [string, string, string][] = [
+  ['#050a15', '#0a1628', '#0f172a'],           // Deep night (default)
+  ['#0a0f1a', '#121a2e', '#1a2744'],           // Midnight blue
+  ['#0d0a15', '#1a1428', '#261e3d'],           // Purple dream
+  ['#0a1210', '#122420', '#1a3530'],           // Forest night
+  ['#100a0a', '#201414', '#301e1e'],           // Warm ember
+  ['#0a0d14', '#141e2d', '#1e2e45'],           // Ocean deep
+  ['#0f0a14', '#1e1428', '#2d1e3c'],           // Lavender dusk
+  ['#0a100d', '#142018', '#1e3022'],           // Aurora green
+];
+
+const GRADIENT_INTERVAL = 14000; // 14 seconds
+
+// Animated Background Component
+const AnimatedGradientBackground = ({ children }: { children: React.ReactNode }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [nextIndex, setNextIndex] = useState(1);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Calculate next gradient index
+      const next = (currentIndex + 1) % AMBIENT_GRADIENTS.length;
+      setNextIndex(next);
+
+      // Crossfade animation
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 2000, // 2 second fade
+        useNativeDriver: true,
+      }).start(() => {
+        setCurrentIndex(next);
+        fadeAnim.setValue(1);
+      });
+    }, GRADIENT_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [currentIndex]);
+
+  return (
+    <View style={styles.gradientContainer}>
+      {/* Next gradient (underneath) */}
+      <LinearGradient
+        colors={AMBIENT_GRADIENTS[nextIndex]}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+      
+      {/* Current gradient with fade */}
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: fadeAnim }]}>
+        <LinearGradient
+          colors={AMBIENT_GRADIENTS[currentIndex]}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+      </Animated.View>
+
+      {/* Content */}
+      {children}
+    </View>
+  );
 };
 
 interface Dream {
@@ -93,7 +157,7 @@ export default function MainScreen({ navigation }: any) {
   const [playingContext, setPlayingContext] = useState<AudioContext | null>(null);
   const [isAudioLoading, setIsAudioLoading] = useState<string | null>(null);
   
-  // Modal state - use refs for stability
+  // Modal state
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedDream, setSelectedDream] = useState<DreamWithMeta | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -310,11 +374,9 @@ export default function MainScreen({ navigation }: any) {
     setIsAudioLoading(null);
   };
 
-  // Audio player with context isolation
   const playAudio = async (dream: Dream, context: AudioContext) => {
     if (!dream.audio_url) return;
 
-    // If same dream AND same context, toggle play/pause
     if (playingId === dream.id && playingContext === context) {
       if (status.playing) {
         player.pause();
@@ -326,7 +388,6 @@ export default function MainScreen({ navigation }: any) {
 
     setIsAudioLoading(dream.id);
 
-    // Stop any current playback
     if (playingId) {
       player.pause();
     }
@@ -384,10 +445,8 @@ export default function MainScreen({ navigation }: any) {
     ]);
   };
 
-  // Open modal without flicker
   const openDreamModal = useCallback((dream: DreamWithMeta) => {
     setSelectedDream(dream);
-    // Small delay to prevent flicker
     requestAnimationFrame(() => {
       setModalVisible(true);
     });
@@ -395,7 +454,6 @@ export default function MainScreen({ navigation }: any) {
 
   const closeDreamModal = useCallback(() => {
     setModalVisible(false);
-    // Delay clearing dream to allow animation
     setTimeout(() => {
       setSelectedDream(null);
     }, 300);
@@ -441,7 +499,6 @@ export default function MainScreen({ navigation }: any) {
     Alert.alert('Coming Soon', 'Dream Circles will be available in the next update.');
   };
 
-  // Check if audio is playing for specific dream AND context
   const isPlayingInContext = (dreamId: string, context: AudioContext) => {
     return playingId === dreamId && playingContext === context && status.playing;
   };
@@ -481,7 +538,7 @@ export default function MainScreen({ navigation }: any) {
         <Animated.View style={[styles.feedCard, { transform: [{ scale: scaleAnim }] }]}>
           <View style={styles.cardHighlight} />
           <LinearGradient
-            colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.02)']}
+            colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.02)'] as const}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.cardInner}
@@ -549,7 +606,7 @@ export default function MainScreen({ navigation }: any) {
     );
   });
 
-  // Journal Entry Card with date + time
+  // Journal Entry Card
   const JournalEntryCard = React.memo(({ item, onPress }: { item: DreamWithMeta; onPress: () => void }) => {
     const isPlaying = isPlayingInContext(item.id, 'journal');
     const isThisPlaying = isThisDreamInContext(item.id, 'journal');
@@ -564,14 +621,12 @@ export default function MainScreen({ navigation }: any) {
     return (
       <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
         <View style={[styles.journalCard, isPlaying && styles.journalCardActive]}>
-          {/* Date & Time Column */}
           <View style={styles.journalTimeCol}>
             <Text style={styles.journalDateLabel}>{formatJournalDate(item.dream_date)}</Text>
             <Text style={styles.journalTimeLabel}>{formatTime(item.created_at)}</Text>
             <View style={styles.journalTimeLine} />
           </View>
 
-          {/* Content */}
           <View style={styles.journalContent}>
             <View style={styles.journalHeader}>
               {item.title ? (
@@ -639,7 +694,7 @@ export default function MainScreen({ navigation }: any) {
     </View>
   );
 
-  // Dream Modal - Stable, no flicker
+  // Dream Modal
   const DreamModal = useMemo(() => {
     if (!selectedDream) return null;
 
@@ -664,7 +719,10 @@ export default function MainScreen({ navigation }: any) {
       >
         <View style={styles.modalOverlay}>
           <SafeAreaView style={styles.modalWrap}>
-            <LinearGradient colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]} style={styles.modalBg}>
+            <LinearGradient 
+              colors={AMBIENT_GRADIENTS[0]} 
+              style={styles.modalBg}
+            >
               <View style={styles.modalHeader}>
                 <TouchableOpacity onPress={closeDreamModal} style={styles.modalClose}>
                   <Ionicons name="chevron-down" size={28} color={theme.textPrimary} />
@@ -841,7 +899,7 @@ export default function MainScreen({ navigation }: any) {
           </View>
 
           <TouchableOpacity style={styles.emptyRecordBtn} onPress={() => navigation.navigate('RecordDream')}>
-            <LinearGradient colors={[theme.gold, '#b8962e']} style={styles.emptyRecordGradient}>
+            <LinearGradient colors={[theme.gold, '#b8962e'] as const} style={styles.emptyRecordGradient}>
               <Ionicons name="mic" size={20} color="#fff" />
               <Text style={styles.emptyRecordText}>Record Your First Dream</Text>
             </LinearGradient>
@@ -852,14 +910,12 @@ export default function MainScreen({ navigation }: any) {
 
     return (
       <View style={styles.journalContainer}>
-        {/* Stats */}
         <View style={styles.statsRow}>
           <StatsCard icon="book" label="Total" value={journalStats.total} color={theme.primary} />
           <StatsCard icon="flame" label="Streak" value={`${journalStats.streak}d`} color={theme.gold} />
           <StatsCard icon="calendar" label="This Month" value={journalStats.thisMonth} color={theme.purple} />
         </View>
 
-        {/* Search */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={18} color={theme.textMuted} />
           <TextInput
@@ -876,7 +932,6 @@ export default function MainScreen({ navigation }: any) {
           )}
         </View>
 
-        {/* Month Filter */}
         {journalStats.months.length > 1 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.monthFilter} contentContainerStyle={styles.monthFilterContent}>
             <TouchableOpacity
@@ -901,7 +956,6 @@ export default function MainScreen({ navigation }: any) {
           </ScrollView>
         )}
 
-        {/* Section List */}
         {groupedDreams.length === 0 ? (
           <View style={styles.noResults}>
             <Ionicons name="search-outline" size={32} color={theme.textMuted} />
@@ -929,7 +983,7 @@ export default function MainScreen({ navigation }: any) {
   };
 
   return (
-    <LinearGradient colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]} style={styles.container}>
+    <AnimatedGradientBackground>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
         <View style={styles.header}>
@@ -985,12 +1039,16 @@ export default function MainScreen({ navigation }: any) {
       </SafeAreaView>
 
       {DreamModal}
-    </LinearGradient>
+    </AnimatedGradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  // Gradient container
+  gradientContainer: {
+    flex: 1,
+  },
+
   safeArea: { flex: 1 },
 
   // Header

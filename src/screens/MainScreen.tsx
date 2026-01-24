@@ -76,6 +76,8 @@ interface DreamSection {
   data: DreamWithMeta[];
 }
 
+type AudioContext = 'feed' | 'journal' | 'modal';
+
 export default function MainScreen({ navigation }: any) {
   const user = useAuthStore((state) => state.user);
   const [activeTab, setActiveTab] = useState(0);
@@ -85,10 +87,15 @@ export default function MainScreen({ navigation }: any) {
   const [myDreamsLoading, setMyDreamsLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [myDreamsError, setMyDreamsError] = useState<string | null>(null);
+  
+  // Audio state with context tracking
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [playingContext, setPlayingContext] = useState<AudioContext | null>(null);
   const [isAudioLoading, setIsAudioLoading] = useState<string | null>(null);
-  const [selectedDream, setSelectedDream] = useState<DreamWithMeta | null>(null);
+  
+  // Modal state - use refs for stability
   const [modalVisible, setModalVisible] = useState(false);
+  const [selectedDream, setSelectedDream] = useState<DreamWithMeta | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
@@ -128,14 +135,13 @@ export default function MainScreen({ navigation }: any) {
       return date.getMonth() === thisMonth && date.getFullYear() === thisYear;
     }).length;
 
-    // Calculate streak
     let streak = 0;
     const sortedDates = [...new Set(myDreams.map((d) => d.dream_date.split('T')[0]))].sort().reverse();
-    
+
     if (sortedDates.length > 0) {
       const today = new Date().toISOString().split('T')[0];
       const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-      
+
       if (sortedDates[0] === today || sortedDates[0] === yesterday) {
         streak = 1;
         for (let i = 1; i < sortedDates.length; i++) {
@@ -151,35 +157,25 @@ export default function MainScreen({ navigation }: any) {
       }
     }
 
-    // Get unique months for calendar
     const months = [...new Set(myDreams.map((d) => {
       const date = new Date(d.dream_date);
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     }))].sort().reverse();
 
-    return {
-      total: myDreams.length,
-      thisMonth: dreamsThisMonth,
-      streak,
-      months,
-    };
+    return { total: myDreams.length, thisMonth: dreamsThisMonth, streak, months };
   }, [myDreams]);
 
-  // Group dreams by time period for journal
+  // Group dreams by time period
   const groupedDreams = useMemo(() => {
     let filtered = myDreams;
 
-    // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
-        (d) =>
-          d.title?.toLowerCase().includes(query) ||
-          d.content?.toLowerCase().includes(query)
+        (d) => d.title?.toLowerCase().includes(query) || d.content?.toLowerCase().includes(query)
       );
     }
 
-    // Apply month filter
     if (selectedMonth) {
       filtered = filtered.filter((d) => {
         const date = new Date(d.dream_date);
@@ -215,9 +211,7 @@ export default function MainScreen({ navigation }: any) {
         thisMonthDreams.push(dream);
       } else {
         const monthKey = dreamDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-        if (!olderByMonth[monthKey]) {
-          olderByMonth[monthKey] = [];
-        }
+        if (!olderByMonth[monthKey]) olderByMonth[monthKey] = [];
         olderByMonth[monthKey].push(dream);
       }
     });
@@ -311,14 +305,17 @@ export default function MainScreen({ navigation }: any) {
 
   const resetAudioState = () => {
     setPlayingId(null);
+    setPlayingContext(null);
     currentAudioUrl.current = null;
     setIsAudioLoading(null);
   };
 
-  const playAudio = async (dream: Dream) => {
+  // Audio player with context isolation
+  const playAudio = async (dream: Dream, context: AudioContext) => {
     if (!dream.audio_url) return;
 
-    if (playingId === dream.id) {
+    // If same dream AND same context, toggle play/pause
+    if (playingId === dream.id && playingContext === context) {
       if (status.playing) {
         player.pause();
       } else {
@@ -329,6 +326,7 @@ export default function MainScreen({ navigation }: any) {
 
     setIsAudioLoading(dream.id);
 
+    // Stop any current playback
     if (playingId) {
       player.pause();
     }
@@ -342,15 +340,14 @@ export default function MainScreen({ navigation }: any) {
           .createSignedUrl(dream.audio_url, 3600);
 
         if (error) throw error;
-        if (data?.signedUrl) {
-          audioUrl = data.signedUrl;
-        }
+        if (data?.signedUrl) audioUrl = data.signedUrl;
       }
 
       await player.replace({ uri: audioUrl });
       currentAudioUrl.current = audioUrl;
       await player.play();
       setPlayingId(dream.id);
+      setPlayingContext(context);
     } catch (error: any) {
       console.error('Audio playback error:', error);
       Alert.alert('Playback Error', 'Unable to play this audio');
@@ -369,7 +366,6 @@ export default function MainScreen({ navigation }: any) {
         onPress: async () => {
           try {
             const { error } = await supabase.from('dreams').delete().eq('id', dreamId);
-
             if (error) throw error;
 
             setMyDreams((prev) => prev.filter((d) => d.id !== dreamId));
@@ -378,6 +374,7 @@ export default function MainScreen({ navigation }: any) {
               resetAudioState();
             }
             setModalVisible(false);
+            setSelectedDream(null);
           } catch (error) {
             console.error('Delete error:', error);
             Alert.alert('Error', 'Failed to delete dream');
@@ -386,6 +383,23 @@ export default function MainScreen({ navigation }: any) {
       },
     ]);
   };
+
+  // Open modal without flicker
+  const openDreamModal = useCallback((dream: DreamWithMeta) => {
+    setSelectedDream(dream);
+    // Small delay to prevent flicker
+    requestAnimationFrame(() => {
+      setModalVisible(true);
+    });
+  }, []);
+
+  const closeDreamModal = useCallback(() => {
+    setModalVisible(false);
+    // Delay clearing dream to allow animation
+    setTimeout(() => {
+      setSelectedDream(null);
+    }, 300);
+  }, []);
 
   const formatDuration = (ms: number) => {
     if (!ms || isNaN(ms) || ms < 0) return '0:00';
@@ -410,6 +424,11 @@ export default function MainScreen({ navigation }: any) {
     return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   };
 
+  const formatJournalDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
   const onPageSelected = (e: any) => {
     setActiveTab(e.nativeEvent.position);
   };
@@ -422,185 +441,194 @@ export default function MainScreen({ navigation }: any) {
     Alert.alert('Coming Soon', 'Dream Circles will be available in the next update.');
   };
 
-  // Feed Dream Card (Social Style)
-  const FeedDreamCard = React.memo(
-    ({ item, onPress }: { item: DreamWithMeta; onPress: () => void }) => {
-      const isPlaying = playingId === item.id && status.playing;
-      const isThisPlaying = playingId === item.id;
-      const isLoading = isAudioLoading === item.id;
-      const isMine = item.user_id === user?.id;
-      const hasAudio = !!item.audio_url;
-      const hasContent = !!item.content;
+  // Check if audio is playing for specific dream AND context
+  const isPlayingInContext = (dreamId: string, context: AudioContext) => {
+    return playingId === dreamId && playingContext === context && status.playing;
+  };
 
-      const userName = isMine ? 'You' : 'Dreamer';
-      const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=1e293b&color=60a5fa&size=64`;
+  const isThisDreamInContext = (dreamId: string, context: AudioContext) => {
+    return playingId === dreamId && playingContext === context;
+  };
 
-      const progressPercent = isThisPlaying && status.duration > 0
-        ? Math.min(100, (status.currentTime / status.duration) * 100)
-        : 0;
+  // Feed Dream Card
+  const FeedDreamCard = React.memo(({ item, onPress }: { item: DreamWithMeta; onPress: () => void }) => {
+    const isPlaying = isPlayingInContext(item.id, 'feed');
+    const isThisPlaying = isThisDreamInContext(item.id, 'feed');
+    const isLoading = isAudioLoading === item.id;
+    const isMine = item.user_id === user?.id;
+    const hasAudio = !!item.audio_url;
+    const hasContent = !!item.content;
 
-      const scaleAnim = useRef(new Animated.Value(1)).current;
+    const userName = isMine ? 'You' : 'Dreamer';
+    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=1e293b&color=60a5fa&size=64`;
 
-      const handlePressIn = () => {
-        Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
-      };
+    const progressPercent = isThisPlaying && status.duration > 0
+      ? Math.min(100, (status.currentTime / status.duration) * 100)
+      : 0;
 
-      const handlePressOut = () => {
-        Animated.spring(scaleAnim, { toValue: 1, friction: 3, useNativeDriver: true }).start();
-      };
+    const scaleAnim = useRef(new Animated.Value(1)).current;
 
-      return (
-        <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
-          <Animated.View style={[styles.feedCard, { transform: [{ scale: scaleAnim }] }]}>
-            <View style={styles.cardHighlight} />
-            <LinearGradient
-              colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.02)']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.cardInner}
-            >
-              <View style={styles.feedCardHeader}>
-                <View style={styles.userRow}>
-                  <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-                  <View>
-                    <Text style={styles.userName}>{userName}</Text>
-                    <Text style={styles.dateText}>{formatDate(item.dream_date)}</Text>
-                  </View>
+    const handlePressIn = () => {
+      Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
+    };
+
+    const handlePressOut = () => {
+      Animated.spring(scaleAnim, { toValue: 1, friction: 3, useNativeDriver: true }).start();
+    };
+
+    return (
+      <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
+        <Animated.View style={[styles.feedCard, { transform: [{ scale: scaleAnim }] }]}>
+          <View style={styles.cardHighlight} />
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.02)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.cardInner}
+          >
+            <View style={styles.feedCardHeader}>
+              <View style={styles.userRow}>
+                <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+                <View>
+                  <Text style={styles.userName}>{userName}</Text>
+                  <Text style={styles.dateText}>{formatDate(item.dream_date)}</Text>
                 </View>
               </View>
-
-              <View style={styles.cardBody}>
-                {item.title && <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>}
-                {hasContent && <Text style={styles.cardExcerpt} numberOfLines={2}>{item.content}</Text>}
-                {!hasContent && !hasAudio && <Text style={styles.cardExcerptMuted}>No content yet</Text>}
-              </View>
-
-              {hasAudio && (
-                <View style={styles.audioPlayer}>
-                  <TouchableOpacity
-                    style={[styles.playBtn, isPlaying && styles.playBtnActive]}
-                    onPress={() => playAudio(item)}
-                    activeOpacity={0.7}
-                  >
-                    {isLoading ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" />
-                    )}
-                  </TouchableOpacity>
-                  <View style={styles.progressWrap}>
-                    <View style={styles.progressTrack}>
-                      <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
-                    </View>
-                  </View>
-                  <Text style={styles.durationText}>
-                    {isThisPlaying ? formatDuration(status.currentTime) : formatDuration(status.duration || 0)}
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.cardFooter}>
-                <View style={styles.engagementRow}>
-                  {item.enable_engagement && (item.likeCount ?? 0) > 0 && (
-                    <View style={styles.engagementItem}>
-                      <Ionicons name="heart" size={14} color={theme.danger} />
-                      <Text style={styles.engagementCount}>{item.likeCount}</Text>
-                    </View>
-                  )}
-                  {(item.interpretationCount ?? 0) > 0 && (
-                    <View style={styles.engagementItem}>
-                      <Ionicons name="chatbubble" size={14} color={theme.gold} />
-                      <Text style={styles.engagementCount}>{item.interpretationCount}</Text>
-                    </View>
-                  )}
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
-              </View>
-            </LinearGradient>
-          </Animated.View>
-        </Pressable>
-      );
-    }
-  );
-
-  // Journal Entry Card (Compact, Elegant)
-  const JournalEntryCard = React.memo(
-    ({ item, onPress }: { item: DreamWithMeta; onPress: () => void }) => {
-      const isPlaying = playingId === item.id && status.playing;
-      const isThisPlaying = playingId === item.id;
-      const isLoading = isAudioLoading === item.id;
-      const hasAudio = !!item.audio_url;
-      const hasContent = !!item.content;
-
-      const progressPercent = isThisPlaying && status.duration > 0
-        ? Math.min(100, (status.currentTime / status.duration) * 100)
-        : 0;
-
-      return (
-        <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-          <View style={[styles.journalCard, isPlaying && styles.journalCardActive]}>
-            {/* Time indicator */}
-            <View style={styles.journalTimeCol}>
-              <Text style={styles.journalTime}>{formatTime(item.created_at)}</Text>
-              <View style={styles.journalTimeLine} />
             </View>
 
-            {/* Content */}
-            <View style={styles.journalContent}>
-              <View style={styles.journalHeader}>
-                {item.title ? (
-                  <Text style={styles.journalTitle} numberOfLines={1}>{item.title}</Text>
-                ) : (
-                  <Text style={styles.journalTitleMuted}>Untitled Dream</Text>
+            <View style={styles.cardBody}>
+              {item.title && <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>}
+              {hasContent && <Text style={styles.cardExcerpt} numberOfLines={2}>{item.content}</Text>}
+              {!hasContent && !hasAudio && <Text style={styles.cardExcerptMuted}>No content yet</Text>}
+            </View>
+
+            {hasAudio && (
+              <View style={styles.audioPlayer}>
+                <TouchableOpacity
+                  style={[styles.playBtn, isPlaying && styles.playBtnActive]}
+                  onPress={() => playAudio(item, 'feed')}
+                  activeOpacity={0.7}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" />
+                  )}
+                </TouchableOpacity>
+                <View style={styles.progressWrap}>
+                  <View style={styles.progressTrack}>
+                    <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                  </View>
+                </View>
+                <Text style={styles.durationText}>
+                  {isThisPlaying ? formatDuration(status.currentTime) : formatDuration(status.duration || 0)}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.cardFooter}>
+              <View style={styles.engagementRow}>
+                {item.enable_engagement && (item.likeCount ?? 0) > 0 && (
+                  <View style={styles.engagementItem}>
+                    <Ionicons name="heart" size={14} color={theme.danger} />
+                    <Text style={styles.engagementCount}>{item.likeCount}</Text>
+                  </View>
                 )}
-                
-                <View style={styles.journalBadges}>
-                  {hasAudio && (
-                    <View style={styles.journalBadge}>
-                      <Ionicons name="mic" size={10} color={theme.primary} />
-                    </View>
-                  )}
-                  <View style={[styles.journalBadge, item.is_public ? styles.badgePublic : styles.badgePrivate]}>
-                    <Ionicons name={item.is_public ? 'globe-outline' : 'lock-closed'} size={10} color={item.is_public ? theme.primary : theme.gold} />
+                {(item.interpretationCount ?? 0) > 0 && (
+                  <View style={styles.engagementItem}>
+                    <Ionicons name="chatbubble" size={14} color={theme.gold} />
+                    <Text style={styles.engagementCount}>{item.interpretationCount}</Text>
                   </View>
+                )}
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+            </View>
+          </LinearGradient>
+        </Animated.View>
+      </Pressable>
+    );
+  });
+
+  // Journal Entry Card with date + time
+  const JournalEntryCard = React.memo(({ item, onPress }: { item: DreamWithMeta; onPress: () => void }) => {
+    const isPlaying = isPlayingInContext(item.id, 'journal');
+    const isThisPlaying = isThisDreamInContext(item.id, 'journal');
+    const isLoading = isAudioLoading === item.id;
+    const hasAudio = !!item.audio_url;
+    const hasContent = !!item.content;
+
+    const progressPercent = isThisPlaying && status.duration > 0
+      ? Math.min(100, (status.currentTime / status.duration) * 100)
+      : 0;
+
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+        <View style={[styles.journalCard, isPlaying && styles.journalCardActive]}>
+          {/* Date & Time Column */}
+          <View style={styles.journalTimeCol}>
+            <Text style={styles.journalDateLabel}>{formatJournalDate(item.dream_date)}</Text>
+            <Text style={styles.journalTimeLabel}>{formatTime(item.created_at)}</Text>
+            <View style={styles.journalTimeLine} />
+          </View>
+
+          {/* Content */}
+          <View style={styles.journalContent}>
+            <View style={styles.journalHeader}>
+              {item.title ? (
+                <Text style={styles.journalTitle} numberOfLines={1}>{item.title}</Text>
+              ) : (
+                <Text style={styles.journalTitleMuted}>Untitled Dream</Text>
+              )}
+
+              <View style={styles.journalBadges}>
+                {hasAudio && (
+                  <View style={styles.journalBadge}>
+                    <Ionicons name="mic" size={10} color={theme.primary} />
+                  </View>
+                )}
+                <View style={[styles.journalBadge, item.is_public ? styles.badgePublic : styles.badgePrivate]}>
+                  <Ionicons
+                    name={item.is_public ? 'globe-outline' : 'lock-closed'}
+                    size={10}
+                    color={item.is_public ? theme.primary : theme.gold}
+                  />
                 </View>
               </View>
-
-              {hasContent && (
-                <Text style={styles.journalExcerpt} numberOfLines={2}>{item.content}</Text>
-              )}
-
-              {/* Inline mini audio player */}
-              {hasAudio && (
-                <View style={styles.journalAudio}>
-                  <TouchableOpacity
-                    style={[styles.journalPlayBtn, isPlaying && styles.journalPlayBtnActive]}
-                    onPress={() => playAudio(item)}
-                  >
-                    {isLoading ? (
-                      <ActivityIndicator size="small" color={theme.textPrimary} />
-                    ) : (
-                      <Ionicons name={isPlaying ? 'pause' : 'play'} size={14} color={theme.textPrimary} />
-                    )}
-                  </TouchableOpacity>
-                  <View style={styles.journalProgressTrack}>
-                    <View style={[styles.journalProgressFill, { width: `${progressPercent}%` }]} />
-                  </View>
-                  <Text style={styles.journalDuration}>
-                    {isThisPlaying ? formatDuration(status.currentTime) : formatDuration(status.duration || 0)}
-                  </Text>
-                </View>
-              )}
             </View>
 
-            <Ionicons name="chevron-forward" size={16} color={theme.textMuted} style={styles.journalChevron} />
-          </View>
-        </TouchableOpacity>
-      );
-    }
-  );
+            {hasContent && (
+              <Text style={styles.journalExcerpt} numberOfLines={2}>{item.content}</Text>
+            )}
 
-  // Stats Card Component
+            {hasAudio && (
+              <View style={styles.journalAudio}>
+                <TouchableOpacity
+                  style={[styles.journalPlayBtn, isPlaying && styles.journalPlayBtnActive]}
+                  onPress={() => playAudio(item, 'journal')}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator size="small" color={theme.textPrimary} />
+                  ) : (
+                    <Ionicons name={isPlaying ? 'pause' : 'play'} size={14} color={theme.textPrimary} />
+                  )}
+                </TouchableOpacity>
+                <View style={styles.journalProgressTrack}>
+                  <View style={[styles.journalProgressFill, { width: `${progressPercent}%` }]} />
+                </View>
+                <Text style={styles.journalDuration}>
+                  {isThisPlaying ? formatDuration(status.currentTime) : formatDuration(status.duration || 0)}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <Ionicons name="chevron-forward" size={16} color={theme.textMuted} style={styles.journalChevron} />
+        </View>
+      </TouchableOpacity>
+    );
+  });
+
+  // Stats Card
   const StatsCard = ({ icon, label, value, color }: { icon: string; label: string; value: number | string; color: string }) => (
     <View style={[styles.statCard, { borderColor: color + '30' }]}>
       <View style={[styles.statIconWrap, { backgroundColor: color + '20' }]}>
@@ -611,13 +639,13 @@ export default function MainScreen({ navigation }: any) {
     </View>
   );
 
-  // Modal Component
-  const DreamModal = () => {
+  // Dream Modal - Stable, no flicker
+  const DreamModal = useMemo(() => {
     if (!selectedDream) return null;
 
     const dream = selectedDream;
-    const isPlaying = playingId === dream.id && status.playing;
-    const isThisDream = playingId === dream.id;
+    const isPlaying = isPlayingInContext(dream.id, 'modal');
+    const isThisDream = isThisDreamInContext(dream.id, 'modal');
     const isMine = dream.user_id === user?.id;
     const progressPercent = isThisDream && status.duration > 0
       ? Math.min(100, (status.currentTime / status.duration) * 100)
@@ -627,81 +655,89 @@ export default function MainScreen({ navigation }: any) {
     const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=1e293b&color=60a5fa&size=64`;
 
     return (
-      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
-        <SafeAreaView style={styles.modalWrap}>
-          <LinearGradient colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]} style={styles.modalBg}>
-            <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.modalClose}>
-                <Ionicons name="chevron-down" size={28} color={theme.textPrimary} />
-              </TouchableOpacity>
-              <Text style={styles.modalHeaderText}>Dream</Text>
-              {isMine ? (
-                <TouchableOpacity onPress={() => deleteDream(dream.id)} style={styles.modalClose}>
-                  <Ionicons name="trash-outline" size={24} color={theme.danger} />
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeDreamModal}
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlay}>
+          <SafeAreaView style={styles.modalWrap}>
+            <LinearGradient colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]} style={styles.modalBg}>
+              <View style={styles.modalHeader}>
+                <TouchableOpacity onPress={closeDreamModal} style={styles.modalClose}>
+                  <Ionicons name="chevron-down" size={28} color={theme.textPrimary} />
                 </TouchableOpacity>
-              ) : (
-                <View style={{ width: 40 }} />
-              )}
-            </View>
-
-            <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
-              <View style={styles.modalUser}>
-                <Image source={{ uri: avatarUrl }} style={styles.modalAvatar} />
-                <View>
-                  <Text style={styles.modalUserName}>{userName}</Text>
-                  <Text style={styles.modalDate}>{formatFullDate(dream.dream_date)}</Text>
-                </View>
+                <Text style={styles.modalHeaderText}>Dream</Text>
+                {isMine ? (
+                  <TouchableOpacity onPress={() => deleteDream(dream.id)} style={styles.modalClose}>
+                    <Ionicons name="trash-outline" size={24} color={theme.danger} />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ width: 44 }} />
+                )}
               </View>
 
-              {dream.title && <Text style={styles.modalTitle}>{dream.title}</Text>}
-              {dream.content && <Text style={styles.modalContent}>{dream.content}</Text>}
-
-              {dream.audio_url && (
-                <View style={styles.modalAudio}>
-                  <TouchableOpacity
-                    style={[styles.modalPlayBtn, isPlaying && styles.modalPlayBtnActive]}
-                    onPress={() => playAudio(dream)}
-                  >
-                    {isAudioLoading === dream.id ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Ionicons name={isPlaying ? 'pause' : 'play'} size={28} color="#fff" />
-                    )}
-                  </TouchableOpacity>
-                  <View style={styles.modalAudioInfo}>
-                    <View style={styles.modalProgressTrack}>
-                      <View style={[styles.modalProgressFill, { width: `${progressPercent}%` }]} />
-                    </View>
-                    <View style={styles.modalTimeRow}>
-                      <Text style={styles.modalTimeText}>{isThisDream ? formatDuration(status.currentTime) : '0:00'}</Text>
-                      <Text style={styles.modalTimeText}>{formatDuration(status.duration || 0)}</Text>
-                    </View>
+              <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+                <View style={styles.modalUser}>
+                  <Image source={{ uri: avatarUrl }} style={styles.modalAvatar} />
+                  <View>
+                    <Text style={styles.modalUserName}>{userName}</Text>
+                    <Text style={styles.modalDate}>{formatFullDate(dream.dream_date)} • {formatTime(dream.created_at)}</Text>
                   </View>
                 </View>
-              )}
 
-              {(dream.enable_engagement || dream.interpretation_mode !== 'disabled') && (
-                <View style={styles.modalEngagement}>
-                  {dream.enable_engagement && (
-                    <View style={styles.modalEngageBtn}>
-                      <Ionicons name="heart-outline" size={22} color={theme.danger} />
-                      <Text style={styles.modalEngageText}>{dream.likeCount || 0}</Text>
+                {dream.title && <Text style={styles.modalTitle}>{dream.title}</Text>}
+                {dream.content && <Text style={styles.modalContentText}>{dream.content}</Text>}
+
+                {dream.audio_url && (
+                  <View style={styles.modalAudio}>
+                    <TouchableOpacity
+                      style={[styles.modalPlayBtn, isPlaying && styles.modalPlayBtnActive]}
+                      onPress={() => playAudio(dream, 'modal')}
+                    >
+                      {isAudioLoading === dream.id ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Ionicons name={isPlaying ? 'pause' : 'play'} size={28} color="#fff" />
+                      )}
+                    </TouchableOpacity>
+                    <View style={styles.modalAudioInfo}>
+                      <View style={styles.modalProgressTrack}>
+                        <View style={[styles.modalProgressFill, { width: `${progressPercent}%` }]} />
+                      </View>
+                      <View style={styles.modalTimeRow}>
+                        <Text style={styles.modalTimeText}>{isThisDream ? formatDuration(status.currentTime) : '0:00'}</Text>
+                        <Text style={styles.modalTimeText}>{formatDuration(status.duration || 0)}</Text>
+                      </View>
                     </View>
-                  )}
-                  {dream.interpretation_mode !== 'disabled' && (
-                    <View style={styles.modalEngageBtn}>
-                      <Ionicons name="chatbubble-outline" size={22} color={theme.gold} />
-                      <Text style={styles.modalEngageText}>{dream.interpretationCount || 0}</Text>
-                    </View>
-                  )}
-                </View>
-              )}
-            </ScrollView>
-          </LinearGradient>
-        </SafeAreaView>
+                  </View>
+                )}
+
+                {(dream.enable_engagement || dream.interpretation_mode !== 'disabled') && (
+                  <View style={styles.modalEngagement}>
+                    {dream.enable_engagement && (
+                      <View style={styles.modalEngageBtn}>
+                        <Ionicons name="heart-outline" size={22} color={theme.danger} />
+                        <Text style={styles.modalEngageText}>{dream.likeCount || 0}</Text>
+                      </View>
+                    )}
+                    {dream.interpretation_mode !== 'disabled' && (
+                      <View style={styles.modalEngageBtn}>
+                        <Ionicons name="chatbubble-outline" size={22} color={theme.gold} />
+                        <Text style={styles.modalEngageText}>{dream.interpretationCount || 0}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </ScrollView>
+            </LinearGradient>
+          </SafeAreaView>
+        </View>
       </Modal>
     );
-  };
+  }, [selectedDream, modalVisible, playingId, playingContext, status, isAudioLoading]);
 
   // Feed Content
   const FeedContent = () => {
@@ -743,9 +779,7 @@ export default function MainScreen({ navigation }: any) {
     return (
       <FlatList
         data={feedDreams}
-        renderItem={({ item }) => (
-          <FeedDreamCard item={item} onPress={() => { setSelectedDream(item); setModalVisible(true); }} />
-        )}
+        renderItem={({ item }) => <FeedDreamCard item={item} onPress={() => openDreamModal(item)} />}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.feedList}
         refreshing={feedLoading}
@@ -755,7 +789,7 @@ export default function MainScreen({ navigation }: any) {
     );
   };
 
-  // Journal Content (My Dreams - Premium Style)
+  // Journal Content
   const JournalContent = () => {
     if (myDreamsLoading) {
       return (
@@ -787,10 +821,10 @@ export default function MainScreen({ navigation }: any) {
           </View>
           <Text style={styles.emptyJournalTitle}>Your Dream Journal</Text>
           <Text style={styles.emptyJournalText}>
-            Start capturing your dreams to unlock insights about your subconscious mind. 
+            Start capturing your dreams to unlock insights about your subconscious mind.
             Recording dreams regularly can help you remember them better and discover patterns.
           </Text>
-          
+
           <View style={styles.emptyBenefits}>
             <View style={styles.benefitItem}>
               <Ionicons name="sparkles" size={20} color={theme.gold} />
@@ -818,14 +852,14 @@ export default function MainScreen({ navigation }: any) {
 
     return (
       <View style={styles.journalContainer}>
-        {/* Stats Dashboard */}
+        {/* Stats */}
         <View style={styles.statsRow}>
           <StatsCard icon="book" label="Total" value={journalStats.total} color={theme.primary} />
           <StatsCard icon="flame" label="Streak" value={`${journalStats.streak}d`} color={theme.gold} />
           <StatsCard icon="calendar" label="This Month" value={journalStats.thisMonth} color={theme.purple} />
         </View>
 
-        {/* Search Bar */}
+        {/* Search */}
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={18} color={theme.textMuted} />
           <TextInput
@@ -842,7 +876,7 @@ export default function MainScreen({ navigation }: any) {
           )}
         </View>
 
-        {/* Month Filter Pills */}
+        {/* Month Filter */}
         {journalStats.months.length > 1 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.monthFilter} contentContainerStyle={styles.monthFilterContent}>
             <TouchableOpacity
@@ -877,9 +911,7 @@ export default function MainScreen({ navigation }: any) {
           <SectionList
             sections={groupedDreams}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <JournalEntryCard item={item} onPress={() => { setSelectedDream(item); setModalVisible(true); }} />
-            )}
+            renderItem={({ item }) => <JournalEntryCard item={item} onPress={() => openDreamModal(item)} />}
             renderSectionHeader={({ section: { title } }) => (
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>{title}</Text>
@@ -952,7 +984,7 @@ export default function MainScreen({ navigation }: any) {
         </View>
       </SafeAreaView>
 
-      <DreamModal />
+      {DreamModal}
     </LinearGradient>
   );
 }
@@ -1023,14 +1055,12 @@ const styles = StyleSheet.create({
   pager: { flex: 1 },
   page: { flex: 1 },
 
-  // Feed List
+  // Feed
   feedList: {
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 140,
   },
-
-  // Feed Card
   feedCard: {
     marginBottom: 16,
     borderRadius: 24,
@@ -1161,7 +1191,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Journal Styles
+  // Journal
   journalContainer: {
     flex: 1,
   },
@@ -1197,7 +1227,6 @@ const styles = StyleSheet.create({
     color: theme.textSubtle,
     marginTop: 2,
   },
-
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1216,7 +1245,6 @@ const styles = StyleSheet.create({
     color: theme.textPrimary,
     marginLeft: 8,
   },
-
   monthFilter: {
     marginTop: 12,
     maxHeight: 36,
@@ -1245,13 +1273,11 @@ const styles = StyleSheet.create({
   monthPillTextActive: {
     color: theme.gold,
   },
-
   journalList: {
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 140,
   },
-
   sectionHeader: {
     paddingVertical: 8,
     marginTop: 8,
@@ -1263,7 +1289,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-
   journalCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1281,18 +1306,25 @@ const styles = StyleSheet.create({
   journalTimeCol: {
     alignItems: 'center',
     marginRight: 12,
-    width: 50,
+    width: 56,
   },
-  journalTime: {
-    fontSize: 11,
+  journalDateLabel: {
+    fontSize: 10,
     color: theme.textSubtle,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  journalTimeLabel: {
+    fontSize: 11,
+    color: theme.textMuted,
     fontWeight: '500',
+    marginTop: 2,
   },
   journalTimeLine: {
     width: 2,
-    height: 40,
+    height: 30,
     backgroundColor: theme.glassBorder,
-    marginTop: 6,
+    marginTop: 8,
     borderRadius: 1,
   },
   journalContent: {
@@ -1381,7 +1413,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     alignSelf: 'center',
   },
-
   noResults: {
     flex: 1,
     justifyContent: 'center',
@@ -1394,7 +1425,7 @@ const styles = StyleSheet.create({
     color: theme.textMuted,
   },
 
-  // Empty Journal State
+  // Empty Journal
   journalScrollEmpty: {
     flex: 1,
   },
@@ -1569,9 +1600,16 @@ const styles = StyleSheet.create({
   },
 
   // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
   modalWrap: {
     flex: 1,
-    backgroundColor: theme.background,
+    marginTop: 40,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    overflow: 'hidden',
   },
   modalBg: {
     flex: 1,
@@ -1587,6 +1625,8 @@ const styles = StyleSheet.create({
   },
   modalClose: {
     padding: 8,
+    width: 44,
+    alignItems: 'center',
   },
   modalHeaderText: {
     fontSize: 17,
@@ -1627,7 +1667,7 @@ const styles = StyleSheet.create({
     color: theme.textPrimary,
     marginBottom: 16,
   },
-  modalContent: {
+  modalContentText: {
     fontSize: 16,
     color: theme.textSecondary,
     lineHeight: 26,

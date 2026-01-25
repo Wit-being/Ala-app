@@ -15,6 +15,7 @@ import {
   Pressable,
   TextInput,
   SectionList,
+  Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,6 +30,8 @@ const { width, height } = Dimensions.get('window');
 
 const theme = {
   background: '#050a15',
+  backgroundGradientStart: '#050a15',
+  backgroundGradientEnd: '#0a1628',
   glass: 'rgba(255, 255, 255, 0.06)',
   glassMedium: 'rgba(255, 255, 255, 0.08)',
   glassStrong: 'rgba(255, 255, 255, 0.12)',
@@ -50,19 +53,84 @@ const theme = {
   glowPurple: 'rgba(167, 139, 250, 0.15)',
 };
 
-// Ambient gradient palettes - dreamy color combinations
 const AMBIENT_GRADIENTS: readonly [string, string, string][] = [
-  ['#050a15', '#0a1628', '#0f172a'],           // Deep night (default)
-  ['#0a0f1a', '#121a2e', '#1a2744'],           // Midnight blue
-  ['#0d0a15', '#1a1428', '#261e3d'],           // Purple dream
-  ['#0a1210', '#122420', '#1a3530'],           // Forest night
-  ['#100a0a', '#201414', '#301e1e'],           // Warm ember
-  ['#0a0d14', '#141e2d', '#1e2e45'],           // Ocean deep
-  ['#0f0a14', '#1e1428', '#2d1e3c'],           // Lavender dusk
-  ['#0a100d', '#142018', '#1e3022'],           // Aurora green
+  ['#050a15', '#0a1628', '#0f172a'],
+  ['#0a0f1a', '#121a2e', '#1a2744'],
+  ['#0d0a15', '#1a1428', '#261e3d'],
+  ['#0a1210', '#122420', '#1a3530'],
+  ['#100a0a', '#201414', '#301e1e'],
+  ['#0a0d14', '#141e2d', '#1e2e45'],
 ];
 
-const GRADIENT_INTERVAL = 14000; // 14 seconds
+const GRADIENT_INTERVAL = 14000;
+
+// Animated Glowing Star Component
+const GlowingStar = () => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const opacityAnim = useRef(new Animated.Value(0.7)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const pulseAnimation = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(scaleAnim, {
+            toValue: 1.3,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(opacityAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacityAnim, {
+            toValue: 0.7,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.timing(rotateAnim, {
+          toValue: 1,
+          duration: 3000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    pulseAnimation.start();
+    return () => pulseAnimation.stop();
+  }, []);
+
+  const spin = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.glowingStar,
+        {
+          transform: [{ scale: scaleAnim }, { rotate: spin }],
+          opacity: opacityAnim,
+        },
+      ]}
+    >
+      <Ionicons name="sparkles" size={12} color={theme.gold} />
+    </Animated.View>
+  );
+};
 
 // Animated Background Component
 const AnimatedGradientBackground = ({ children }: { children: React.ReactNode }) => {
@@ -72,14 +140,12 @@ const AnimatedGradientBackground = ({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     const interval = setInterval(() => {
-      // Calculate next gradient index
       const next = (currentIndex + 1) % AMBIENT_GRADIENTS.length;
       setNextIndex(next);
 
-      // Crossfade animation
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 2000, // 2 second fade
+        duration: 2000,
         useNativeDriver: true,
       }).start(() => {
         setCurrentIndex(next);
@@ -92,15 +158,12 @@ const AnimatedGradientBackground = ({ children }: { children: React.ReactNode })
 
   return (
     <View style={styles.gradientContainer}>
-      {/* Next gradient (underneath) */}
       <LinearGradient
         colors={AMBIENT_GRADIENTS[nextIndex]}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      
-      {/* Current gradient with fade */}
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: fadeAnim }]}>
         <LinearGradient
           colors={AMBIENT_GRADIENTS[currentIndex]}
@@ -109,10 +172,88 @@ const AnimatedGradientBackground = ({ children }: { children: React.ReactNode })
           end={{ x: 1, y: 1 }}
         />
       </Animated.View>
-
-      {/* Content */}
       {children}
     </View>
+  );
+};
+
+// Custom Coming Soon Modal
+const ComingSoonModal = ({ 
+  visible, 
+  onClose, 
+  feature 
+}: { 
+  visible: boolean; 
+  onClose: () => void; 
+  feature: string;
+}) => {
+  const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          friction: 8,
+          tension: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      scaleAnim.setValue(0.8);
+      opacityAnim.setValue(0);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
+      <Pressable style={styles.comingSoonOverlay} onPress={onClose}>
+        <Animated.View
+          style={[
+            styles.comingSoonContent,
+            {
+              opacity: opacityAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]}
+            style={styles.comingSoonGradient}
+          >
+            <View style={styles.comingSoonIconWrap}>
+              <LinearGradient
+                colors={[theme.gold + '40', theme.gold + '10']}
+                style={styles.comingSoonIconBg}
+              >
+                <Ionicons name="sparkles" size={32} color={theme.gold} />
+              </LinearGradient>
+            </View>
+            <Text style={styles.comingSoonTitle}>Coming Soon</Text>
+            <Text style={styles.comingSoonFeature}>{feature}</Text>
+            <Text style={styles.comingSoonDesc}>
+              We're crafting something special. Stay tuned for updates!
+            </Text>
+            <TouchableOpacity style={styles.comingSoonBtn} onPress={onClose}>
+              <LinearGradient
+                colors={[theme.gold, '#b8962e']}
+                style={styles.comingSoonBtnGradient}
+              >
+                <Text style={styles.comingSoonBtnText}>Got it</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </LinearGradient>
+        </Animated.View>
+      </Pressable>
+    </Modal>
   );
 };
 
@@ -133,11 +274,32 @@ interface Dream {
 interface DreamWithMeta extends Dream {
   likeCount?: number;
   interpretationCount?: number;
+  isLiked?: boolean;
+  authorProfile?: UserProfile | null;
+}
+
+interface UserProfile {
+  id: string;
+  username?: string;
+  display_name?: string;
+  avatar_url?: string;
+  is_public?: boolean;
 }
 
 interface DreamSection {
   title: string;
   data: DreamWithMeta[];
+}
+
+interface Interpretation {
+  id: string;
+  dream_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  parent_id?: string | null;
+  author?: UserProfile;
+  replies?: Interpretation[];
 }
 
 type AudioContext = 'feed' | 'journal' | 'modal';
@@ -152,7 +314,17 @@ export default function MainScreen({ navigation }: any) {
   const [feedError, setFeedError] = useState<string | null>(null);
   const [myDreamsError, setMyDreamsError] = useState<string | null>(null);
   
-  // Audio state with context tracking
+  // User profile
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  
+  // Notifications
+  const [hasNotifications, setHasNotifications] = useState(false);
+  
+  // Coming Soon Modal
+  const [comingSoonVisible, setComingSoonVisible] = useState(false);
+  const [comingSoonFeature, setComingSoonFeature] = useState('');
+  
+  // Audio state
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [playingContext, setPlayingContext] = useState<AudioContext | null>(null);
   const [isAudioLoading, setIsAudioLoading] = useState<string | null>(null);
@@ -160,6 +332,10 @@ export default function MainScreen({ navigation }: any) {
   // Modal state
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedDream, setSelectedDream] = useState<DreamWithMeta | null>(null);
+  const [interpretations, setInterpretations] = useState<Interpretation[]>([]);
+  const [interpretationsLoading, setInterpretationsLoading] = useState(false);
+  
+  // Journal filters
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
@@ -169,10 +345,62 @@ export default function MainScreen({ navigation }: any) {
   const player = useAudioPlayer();
   const status = useAudioPlayerStatus(player);
 
-  const userAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.email || 'U')}&background=1e293b&color=60a5fa&size=64`;
+  // Fetch user profile
+  const fetchUserProfile = async () => {
+    if (!user?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, is_public')
+        .eq('id', user.id)
+        .single();
+      
+      if (error) throw error;
+      setUserProfile(data);
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    }
+  };
+
+  // Check for notifications
+  const checkNotifications = async () => {
+    if (!user?.id) return;
+    
+    try {
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('read', false);
+      
+      if (!error) {
+        setHasNotifications((count || 0) > 0);
+      }
+    } catch (error) {
+      console.error('Error checking notifications:', error);
+    }
+  };
+
+  // Get user avatar URL
+  const getUserAvatarUrl = () => {
+    if (userProfile?.avatar_url) {
+      // If it's a Supabase storage URL
+      if (userProfile.avatar_url.startsWith('http')) {
+        return userProfile.avatar_url;
+      }
+      // Generate signed URL for private storage
+      return userProfile.avatar_url;
+    }
+    // Fallback to generated avatar
+    const displayName = userProfile?.display_name || userProfile?.username || user?.email || 'U';
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=1e293b&color=60a5fa&size=128`;
+  };
 
   useFocusEffect(
     useCallback(() => {
+      fetchUserProfile();
+      checkNotifications();
       fetchFeedDreams();
       fetchMyDreams();
       return () => {
@@ -313,6 +541,17 @@ export default function MainScreen({ navigation }: any) {
         (data || []).map(async (dream) => {
           let likeCount = 0;
           let interpretationCount = 0;
+          let isLiked = false;
+          let authorProfile: UserProfile | null = null;
+
+          // Fetch author profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('id, username, display_name, avatar_url, is_public')
+            .eq('id', dream.user_id)
+            .single();
+          
+          authorProfile = profile;
 
           if (dream.enable_engagement) {
             const { count: likes } = await supabase
@@ -320,6 +559,17 @@ export default function MainScreen({ navigation }: any) {
               .select('*', { count: 'exact', head: true })
               .eq('dream_id', dream.id);
             likeCount = likes || 0;
+
+            // Check if current user liked
+            if (user?.id) {
+              const { data: userLike } = await supabase
+                .from('dream_likes')
+                .select('id')
+                .eq('dream_id', dream.id)
+                .eq('user_id', user.id)
+                .single();
+              isLiked = !!userLike;
+            }
           }
 
           if (dream.interpretation_mode && dream.interpretation_mode !== 'disabled') {
@@ -330,7 +580,7 @@ export default function MainScreen({ navigation }: any) {
             interpretationCount = interpretations || 0;
           }
 
-          return { ...dream, likeCount, interpretationCount };
+          return { ...dream, likeCount, interpretationCount, isLiked, authorProfile };
         })
       );
 
@@ -364,6 +614,109 @@ export default function MainScreen({ navigation }: any) {
       setMyDreamsError(error.message || 'Failed to load your dreams');
     } finally {
       setMyDreamsLoading(false);
+    }
+  };
+
+  // Fetch interpretations for a dream (threaded)
+  const fetchInterpretations = async (dreamId: string) => {
+    setInterpretationsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('interpretations')
+        .select('id, dream_id, user_id, content, created_at, parent_id')
+        .eq('dream_id', dreamId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      // Fetch author profiles
+      const withAuthors = await Promise.all(
+        (data || []).map(async (interp) => {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('id, username, display_name, avatar_url, is_public')
+            .eq('id', interp.user_id)
+            .single();
+          // If profile is null, set author as undefined
+          return { ...interp, author: profile ?? undefined };
+        })
+      );
+
+      // Build thread structure
+      const rootInterpretations: Interpretation[] = [];
+      const repliesMap: { [key: string]: Interpretation[] } = {};
+
+      withAuthors.forEach((interp) => {
+        if (interp.parent_id) {
+          if (!repliesMap[interp.parent_id]) repliesMap[interp.parent_id] = [];
+          repliesMap[interp.parent_id].push(interp);
+        } else {
+          rootInterpretations.push({ ...interp, replies: [] });
+        }
+      });
+
+      // Attach replies to parents
+      rootInterpretations.forEach((interp) => {
+        interp.replies = repliesMap[interp.id] || [];
+      });
+
+      setInterpretations(rootInterpretations);
+    } catch (error) {
+      console.error('Error fetching interpretations:', error);
+    } finally {
+      setInterpretationsLoading(false);
+    }
+  };
+
+  // Like/unlike a dream
+  const toggleLike = async (dream: DreamWithMeta) => {
+    if (!user?.id || !dream.enable_engagement) return;
+
+    try {
+      if (dream.isLiked) {
+        await supabase
+          .from('dream_likes')
+          .delete()
+          .eq('dream_id', dream.id)
+          .eq('user_id', user.id);
+
+        setFeedDreams((prev) =>
+          prev.map((d) =>
+            d.id === dream.id
+              ? { ...d, isLiked: false, likeCount: (d.likeCount || 1) - 1 }
+              : d
+          )
+        );
+      } else {
+        await supabase
+          .from('dream_likes')
+          .insert({ dream_id: dream.id, user_id: user.id });
+
+        setFeedDreams((prev) =>
+          prev.map((d) =>
+            d.id === dream.id
+              ? { ...d, isLiked: true, likeCount: (d.likeCount || 0) + 1 }
+              : d
+          )
+        );
+      }
+
+      // Update selected dream if modal is open
+      if (selectedDream?.id === dream.id) {
+        setSelectedDream((prev) =>
+          prev
+            ? {
+                ...prev,
+                isLiked: !prev.isLiked,
+                likeCount: prev.isLiked
+                  ? (prev.likeCount || 1) - 1
+                  : (prev.likeCount || 0) + 1,
+              }
+            : null
+        );
+      }
+    } catch (error) {
+      console.error('Error toggling like:', error);
     }
   };
 
@@ -447,6 +800,9 @@ export default function MainScreen({ navigation }: any) {
 
   const openDreamModal = useCallback((dream: DreamWithMeta) => {
     setSelectedDream(dream);
+    if (dream.interpretation_mode && dream.interpretation_mode !== 'disabled') {
+      fetchInterpretations(dream.id);
+    }
     requestAnimationFrame(() => {
       setModalVisible(true);
     });
@@ -456,8 +812,22 @@ export default function MainScreen({ navigation }: any) {
     setModalVisible(false);
     setTimeout(() => {
       setSelectedDream(null);
+      setInterpretations([]);
     }, 300);
   }, []);
+
+  const showComingSoon = (feature: string) => {
+    setComingSoonFeature(feature);
+    setComingSoonVisible(true);
+  };
+
+  const navigateToProfile = (profile: UserProfile | null, userId: string) => {
+    if (!profile?.is_public && userId !== user?.id) {
+      showComingSoon('Private Profile');
+      return;
+    }
+    navigation.navigate('ViewProfile', { userId });
+  };
 
   const formatDuration = (ms: number) => {
     if (!ms || isNaN(ms) || ms < 0) return '0:00';
@@ -496,7 +866,7 @@ export default function MainScreen({ navigation }: any) {
   };
 
   const handleCirclesPress = () => {
-    Alert.alert('Coming Soon', 'Dream Circles will be available in the next update.');
+    showComingSoon('Dream Circles');
   };
 
   const isPlayingInContext = (dreamId: string, context: AudioContext) => {
@@ -507,8 +877,71 @@ export default function MainScreen({ navigation }: any) {
     return playingId === dreamId && playingContext === context;
   };
 
-  // Feed Dream Card
+  const getAvatarUrl = (profile: UserProfile | null, fallbackName: string) => {
+    if (profile?.avatar_url && profile.avatar_url.startsWith('http')) {
+      return profile.avatar_url;
+    }
+    const name = profile?.display_name || profile?.username || fallbackName;
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1e293b&color=60a5fa&size=64`;
+  };
+
+  // Animated Star Like Button
+  const StarLikeButton = ({ isLiked, count, onPress, disabled }: { isLiked: boolean; count: number; onPress: () => void; disabled?: boolean }) => {
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+    const fillAnim = useRef(new Animated.Value(isLiked ? 1 : 0)).current;
+
+    useEffect(() => {
+      Animated.timing(fillAnim, {
+        toValue: isLiked ? 1 : 0,
+        duration: 200,
+        useNativeDriver: false,
+      }).start();
+    }, [isLiked]);
+
+    const handlePress = () => {
+      if (disabled) return;
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1.3,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      onPress();
+    };
+
+    const starColor = fillAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [theme.textMuted, theme.gold],
+    });
+
+    return (
+      <TouchableOpacity
+        style={styles.starLikeBtn}
+        onPress={handlePress}
+        activeOpacity={0.7}
+        disabled={disabled}
+      >
+        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+          <Ionicons
+            name={isLiked ? 'star' : 'star-outline'}
+            size={18}
+            color={isLiked ? theme.gold : theme.textMuted}
+          />
+        </Animated.View>
+        {count > 0 && <Text style={[styles.starCount, isLiked && styles.starCountActive]}>{count}</Text>}
+      </TouchableOpacity>
+    );
+  };
+
+  // Feed Dream Card with transparent design
   const FeedDreamCard = React.memo(({ item, onPress }: { item: DreamWithMeta; onPress: () => void }) => {
+    const [isPressed, setIsPressed] = useState(false);
     const isPlaying = isPlayingInContext(item.id, 'feed');
     const isThisPlaying = isThisDreamInContext(item.id, 'feed');
     const isLoading = isAudioLoading === item.id;
@@ -516,41 +949,67 @@ export default function MainScreen({ navigation }: any) {
     const hasAudio = !!item.audio_url;
     const hasContent = !!item.content;
 
-    const userName = isMine ? 'You' : 'Dreamer';
-    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=1e293b&color=60a5fa&size=64`;
+    const userName = isMine ? 'You' : item.authorProfile?.display_name || item.authorProfile?.username || 'Dreamer';
+    const avatarUrl = getAvatarUrl(item.authorProfile || null, userName);
 
     const progressPercent = isThisPlaying && status.duration > 0
       ? Math.min(100, (status.currentTime / status.duration) * 100)
       : 0;
 
     const scaleAnim = useRef(new Animated.Value(1)).current;
+    const borderOpacity = useRef(new Animated.Value(0)).current;
 
     const handlePressIn = () => {
-      Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
+      setIsPressed(true);
+      Animated.parallel([
+        Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true }),
+        Animated.timing(borderOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+      ]).start();
     };
 
     const handlePressOut = () => {
-      Animated.spring(scaleAnim, { toValue: 1, friction: 3, useNativeDriver: true }).start();
+      setIsPressed(false);
+      Animated.parallel([
+        Animated.spring(scaleAnim, { toValue: 1, friction: 3, useNativeDriver: true }),
+        Animated.timing(borderOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]).start();
     };
 
+    const canInterpret = item.interpretation_mode && item.interpretation_mode !== 'disabled';
+
     return (
-      <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
-        <Animated.View style={[styles.feedCard, { transform: [{ scale: scaleAnim }] }]}>
-          <View style={styles.cardHighlight} />
-          <LinearGradient
-            colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.02)'] as const}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.cardInner}
-          >
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+      >
+        <Animated.View
+          style={[
+            styles.feedCardTransparent,
+            { transform: [{ scale: scaleAnim }] },
+          ]}
+        >
+          {/* Border that shows on press */}
+          <Animated.View
+            style={[
+              styles.feedCardBorder,
+              { opacity: borderOpacity },
+            ]}
+          />
+
+          <View style={styles.feedCardContent}>
             <View style={styles.feedCardHeader}>
-              <View style={styles.userRow}>
+              <TouchableOpacity
+                style={styles.userRow}
+                onPress={() => navigateToProfile(item.authorProfile || null, item.user_id)}
+                activeOpacity={0.7}
+              >
                 <Image source={{ uri: avatarUrl }} style={styles.avatar} />
                 <View>
                   <Text style={styles.userName}>{userName}</Text>
                   <Text style={styles.dateText}>{formatDate(item.dream_date)}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.cardBody}>
@@ -560,9 +1019,9 @@ export default function MainScreen({ navigation }: any) {
             </View>
 
             {hasAudio && (
-              <View style={styles.audioPlayer}>
+              <View style={styles.audioPlayerTransparent}>
                 <TouchableOpacity
-                  style={[styles.playBtn, isPlaying && styles.playBtnActive]}
+                  style={[styles.playBtnTransparent, isPlaying && styles.playBtnActive]}
                   onPress={() => playAudio(item, 'feed')}
                   activeOpacity={0.7}
                 >
@@ -573,7 +1032,7 @@ export default function MainScreen({ navigation }: any) {
                   )}
                 </TouchableOpacity>
                 <View style={styles.progressWrap}>
-                  <View style={styles.progressTrack}>
+                  <View style={styles.progressTrackTransparent}>
                     <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
                   </View>
                 </View>
@@ -583,24 +1042,38 @@ export default function MainScreen({ navigation }: any) {
               </View>
             )}
 
-            <View style={styles.cardFooter}>
+            <View style={styles.cardFooterTransparent}>
               <View style={styles.engagementRow}>
-                {item.enable_engagement && (item.likeCount ?? 0) > 0 && (
-                  <View style={styles.engagementItem}>
-                    <Ionicons name="heart" size={14} color={theme.danger} />
-                    <Text style={styles.engagementCount}>{item.likeCount}</Text>
-                  </View>
+                {/* Star Like Button */}
+                {item.enable_engagement && (
+                  <StarLikeButton
+                    isLiked={item.isLiked || false}
+                    count={item.likeCount || 0}
+                    onPress={() => toggleLike(item)}
+                  />
                 )}
-                {(item.interpretationCount ?? 0) > 0 && (
-                  <View style={styles.engagementItem}>
-                    <Ionicons name="chatbubble" size={14} color={theme.gold} />
-                    <Text style={styles.engagementCount}>{item.interpretationCount}</Text>
-                  </View>
+
+                {/* Interpret Button */}
+                {canInterpret && (
+                  <TouchableOpacity
+                    style={styles.interpretBtn}
+                    onPress={onPress}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="pencil-outline" size={14} color={theme.gold} />
+                    <Text style={styles.interpretText}>interpret</Text>
+                  </TouchableOpacity>
                 )}
               </View>
-              <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+
+              {(item.interpretationCount ?? 0) > 0 && (
+                <View style={styles.threadIndicator}>
+                  <Ionicons name="chatbubbles-outline" size={14} color={theme.textSubtle} />
+                  <Text style={styles.threadCount}>{item.interpretationCount}</Text>
+                </View>
+              )}
             </View>
-          </LinearGradient>
+          </View>
         </Animated.View>
       </Pressable>
     );
@@ -694,6 +1167,40 @@ export default function MainScreen({ navigation }: any) {
     </View>
   );
 
+  // Interpretation Thread Item
+  const InterpretationThread = ({ interpretation, depth = 0 }: { interpretation: Interpretation; depth?: number }) => {
+    const avatarUrl = getAvatarUrl(interpretation.author || null, 'User');
+    const displayName = interpretation.author?.display_name || interpretation.author?.username || 'Anonymous';
+
+    return (
+      <View style={[styles.threadItem, { marginLeft: depth * 16 }]}>
+        {depth > 0 && <View style={styles.threadLine} />}
+        <LinearGradient
+          colors={depth === 0 
+            ? ['rgba(212, 175, 55, 0.1)', 'rgba(212, 175, 55, 0.02)']
+            : ['rgba(96, 165, 250, 0.08)', 'rgba(96, 165, 250, 0.02)']}
+          style={styles.threadContent}
+        >
+          <TouchableOpacity
+            style={styles.threadHeader}
+            onPress={() => navigateToProfile(interpretation.author || null, interpretation.user_id)}
+            activeOpacity={0.7}
+          >
+            <Image source={{ uri: avatarUrl }} style={styles.threadAvatar} />
+            <View style={styles.threadMeta}>
+              <Text style={styles.threadAuthor}>{displayName}</Text>
+              <Text style={styles.threadTime}>{formatDate(interpretation.created_at)}</Text>
+            </View>
+          </TouchableOpacity>
+          <Text style={styles.threadText}>{interpretation.content}</Text>
+        </LinearGradient>
+        {interpretation.replies?.map((reply) => (
+          <InterpretationThread key={reply.id} interpretation={reply} depth={depth + 1} />
+        ))}
+      </View>
+    );
+  };
+
   // Dream Modal
   const DreamModal = useMemo(() => {
     if (!selectedDream) return null;
@@ -706,8 +1213,11 @@ export default function MainScreen({ navigation }: any) {
       ? Math.min(100, (status.currentTime / status.duration) * 100)
       : 0;
 
-    const userName = isMine ? 'You' : 'Dreamer';
-    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=1e293b&color=60a5fa&size=64`;
+    const userName = isMine ? 'You' : dream.authorProfile?.display_name || dream.authorProfile?.username || 'Dreamer';
+    const avatarUrl = getAvatarUrl(dream.authorProfile || null, userName);
+
+    const canInterpret = dream.interpretation_mode && dream.interpretation_mode !== 'disabled';
+    const showThread = canInterpret && interpretations.length > 0;
 
     return (
       <Modal
@@ -719,10 +1229,7 @@ export default function MainScreen({ navigation }: any) {
       >
         <View style={styles.modalOverlay}>
           <SafeAreaView style={styles.modalWrap}>
-            <LinearGradient 
-              colors={AMBIENT_GRADIENTS[0]} 
-              style={styles.modalBg}
-            >
+            <LinearGradient colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]} style={styles.modalBg}>
               <View style={styles.modalHeader}>
                 <TouchableOpacity onPress={closeDreamModal} style={styles.modalClose}>
                   <Ionicons name="chevron-down" size={28} color={theme.textPrimary} />
@@ -738,13 +1245,17 @@ export default function MainScreen({ navigation }: any) {
               </View>
 
               <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
-                <View style={styles.modalUser}>
+                <TouchableOpacity
+                  style={styles.modalUser}
+                  onPress={() => navigateToProfile(dream.authorProfile || null, dream.user_id)}
+                  activeOpacity={0.7}
+                >
                   <Image source={{ uri: avatarUrl }} style={styles.modalAvatar} />
                   <View>
                     <Text style={styles.modalUserName}>{userName}</Text>
                     <Text style={styles.modalDate}>{formatFullDate(dream.dream_date)} • {formatTime(dream.created_at)}</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
 
                 {dream.title && <Text style={styles.modalTitle}>{dream.title}</Text>}
                 {dream.content && <Text style={styles.modalContentText}>{dream.content}</Text>}
@@ -773,19 +1284,49 @@ export default function MainScreen({ navigation }: any) {
                   </View>
                 )}
 
-                {(dream.enable_engagement || dream.interpretation_mode !== 'disabled') && (
+                {(dream.enable_engagement || canInterpret) && (
                   <View style={styles.modalEngagement}>
                     {dream.enable_engagement && (
-                      <View style={styles.modalEngageBtn}>
-                        <Ionicons name="heart-outline" size={22} color={theme.danger} />
-                        <Text style={styles.modalEngageText}>{dream.likeCount || 0}</Text>
-                      </View>
+                      <TouchableOpacity
+                        style={[styles.modalEngageBtn, dream.isLiked && styles.modalEngageBtnActive]}
+                        onPress={() => toggleLike(dream)}
+                      >
+                        <Ionicons
+                          name={dream.isLiked ? 'star' : 'star-outline'}
+                          size={22}
+                          color={dream.isLiked ? theme.gold : theme.textMuted}
+                        />
+                        <Text style={[styles.modalEngageText, dream.isLiked && styles.modalEngageTextActive]}>
+                          {dream.likeCount || 0}
+                        </Text>
+                      </TouchableOpacity>
                     )}
-                    {dream.interpretation_mode !== 'disabled' && (
-                      <View style={styles.modalEngageBtn}>
-                        <Ionicons name="chatbubble-outline" size={22} color={theme.gold} />
-                        <Text style={styles.modalEngageText}>{dream.interpretationCount || 0}</Text>
-                      </View>
+                    {canInterpret && (
+                      <TouchableOpacity
+                        style={styles.modalEngageBtn}
+                        onPress={() => showComingSoon('Add Interpretation')}
+                      >
+                        <Ionicons name="pencil-outline" size={22} color={theme.gold} />
+                        <Text style={styles.modalEngageText}>Interpret</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                {/* Thread Section */}
+                {showThread && (
+                  <View style={styles.threadSection}>
+                    <View style={styles.threadSectionHeader}>
+                      <Ionicons name="chatbubbles" size={18} color={theme.gold} />
+                      <Text style={styles.threadSectionTitle}>Interpretations</Text>
+                      <Text style={styles.threadSectionCount}>{interpretations.length}</Text>
+                    </View>
+                    {interpretationsLoading ? (
+                      <ActivityIndicator size="small" color={theme.gold} style={{ marginTop: 16 }} />
+                    ) : (
+                      interpretations.map((interp) => (
+                        <InterpretationThread key={interp.id} interpretation={interp} />
+                      ))
                     )}
                   </View>
                 )}
@@ -795,7 +1336,7 @@ export default function MainScreen({ navigation }: any) {
         </View>
       </Modal>
     );
-  }, [selectedDream, modalVisible, playingId, playingContext, status, isAudioLoading]);
+  }, [selectedDream, modalVisible, playingId, playingContext, status, isAudioLoading, interpretations, interpretationsLoading]);
 
   // Feed Content
   const FeedContent = () => {
@@ -899,7 +1440,7 @@ export default function MainScreen({ navigation }: any) {
           </View>
 
           <TouchableOpacity style={styles.emptyRecordBtn} onPress={() => navigation.navigate('RecordDream')}>
-            <LinearGradient colors={[theme.gold, '#b8962e'] as const} style={styles.emptyRecordGradient}>
+            <LinearGradient colors={[theme.gold, '#b8962e']} style={styles.emptyRecordGradient}>
               <Ionicons name="mic" size={20} color="#fff" />
               <Text style={styles.emptyRecordText}>Record Your First Dream</Text>
             </LinearGradient>
@@ -988,7 +1529,7 @@ export default function MainScreen({ navigation }: any) {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.navigate('Profile')} activeOpacity={0.8}>
-            <Image source={{ uri: userAvatar }} style={styles.headerAvatar} />
+            <Image source={{ uri: getUserAvatarUrl() }} style={styles.headerAvatar} />
           </TouchableOpacity>
 
           <View style={styles.tabRow}>
@@ -1002,11 +1543,10 @@ export default function MainScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => navigation.navigate('Notifications')}>
-            <View style={styles.bellWrap}>
-              <Ionicons name="notifications-outline" size={22} color={theme.textPrimary} />
-            <View style={styles.bellDot} />
-          </View>
+          {/* Notification icon with animated star */}
+          <TouchableOpacity onPress={() => navigation.navigate('Notifications')} style={styles.notificationBtn}>
+            <Ionicons name="notifications-outline" size={22} color={theme.textPrimary} />
+            {hasNotifications && <GlowingStar />}
           </TouchableOpacity>
         </View>
 
@@ -1039,17 +1579,27 @@ export default function MainScreen({ navigation }: any) {
       </SafeAreaView>
 
       {DreamModal}
+      <ComingSoonModal
+        visible={comingSoonVisible}
+        onClose={() => setComingSoonVisible(false)}
+        feature={comingSoonFeature}
+      />
     </AnimatedGradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  // Gradient container
   gradientContainer: {
     flex: 1,
   },
-
   safeArea: { flex: 1 },
+
+  // Glowing Star
+  glowingStar: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+  },
 
   // Header
   header: {
@@ -1096,17 +1646,9 @@ const styles = StyleSheet.create({
   tabDotGold: {
     backgroundColor: theme.gold,
   },
-  bellWrap: {
+  notificationBtn: {
     position: 'relative',
-  },
-  bellDot: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: theme.danger,
+    padding: 4,
   },
 
   // Pager
@@ -1119,29 +1661,21 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 140,
   },
-  feedCard: {
-    marginBottom: 16,
-    borderRadius: 24,
-    backgroundColor: theme.glass,
+
+  // Transparent Feed Card
+  feedCardTransparent: {
+    marginBottom: 20,
+    borderRadius: 20,
+    position: 'relative',
+  },
+  feedCardBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: theme.glassBorder,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    elevation: 16,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
   },
-  cardHighlight: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    zIndex: 1,
-  },
-  cardInner: {
+  feedCardContent: {
     padding: 16,
   },
   feedCardHeader: {
@@ -1189,20 +1723,20 @@ const styles = StyleSheet.create({
     color: theme.textMuted,
     fontStyle: 'italic',
   },
-  audioPlayer: {
+  audioPlayerTransparent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     padding: 12,
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    backgroundColor: 'rgba(0,0,0,0.2)',
     borderRadius: 16,
     marginBottom: 12,
   },
-  playBtn: {
+  playBtnTransparent: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1212,9 +1746,9 @@ const styles = StyleSheet.create({
   progressWrap: {
     flex: 1,
   },
-  progressTrack: {
+  progressTrackTransparent: {
     height: 4,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     borderRadius: 2,
     overflow: 'hidden',
   },
@@ -1229,24 +1763,58 @@ const styles = StyleSheet.create({
     minWidth: 36,
     textAlign: 'right',
   },
-  cardFooter: {
+  cardFooterTransparent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 4,
   },
   engagementRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 16,
   },
-  engagementItem: {
+  
+  // Star Like Button
+  starLikeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  starCount: {
+    fontSize: 13,
+    color: theme.textMuted,
+    fontWeight: '500',
+  },
+  starCountActive: {
+    color: theme.gold,
+  },
+
+  // Interpret Button
+  interpretBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  interpretText: {
+    fontSize: 12,
+    color: theme.gold,
+    fontWeight: '500',
+    fontStyle: 'italic',
+  },
+
+  threadIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  engagementCount: {
-    fontSize: 13,
+  threadCount: {
+    fontSize: 12,
     color: theme.textSubtle,
-    fontWeight: '500',
   },
 
   // Journal
@@ -1779,6 +2347,7 @@ const styles = StyleSheet.create({
   modalEngagement: {
     flexDirection: 'row',
     gap: 12,
+    marginBottom: 24,
   },
   modalEngageBtn: {
     flex: 1,
@@ -1792,9 +2361,153 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.glassBorder,
   },
+  modalEngageBtnActive: {
+    backgroundColor: theme.glowGold,
+    borderColor: theme.gold + '30',
+  },
   modalEngageText: {
     fontSize: 15,
     fontWeight: '600',
     color: theme.textSecondary,
+  },
+  modalEngageTextActive: {
+    color: theme.gold,
+  },
+
+  // Thread Section
+  threadSection: {
+    marginTop: 8,
+  },
+  threadSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.glassBorder,
+  },
+  threadSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.textPrimary,
+    flex: 1,
+  },
+  threadSectionCount: {
+    fontSize: 14,
+    color: theme.gold,
+    fontWeight: '600',
+  },
+  threadItem: {
+    marginBottom: 12,
+    position: 'relative',
+  },
+  threadLine: {
+    position: 'absolute',
+    left: -12,
+    top: 20,
+    bottom: 0,
+    width: 2,
+    backgroundColor: theme.glassBorder,
+    borderRadius: 1,
+  },
+  threadContent: {
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: theme.glassBorder,
+  },
+  threadHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  threadAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 10,
+  },
+  threadMeta: {
+    flex: 1,
+  },
+  threadAuthor: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.textPrimary,
+  },
+  threadTime: {
+    fontSize: 11,
+    color: theme.textMuted,
+    marginTop: 1,
+  },
+  threadText: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    lineHeight: 20,
+  },
+
+  // Coming Soon Modal
+  comingSoonOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  comingSoonContent: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.glassBorder,
+  },
+  comingSoonGradient: {
+    padding: 32,
+    alignItems: 'center',
+  },
+  comingSoonIconWrap: {
+    marginBottom: 20,
+  },
+  comingSoonIconBg: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  comingSoonTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: theme.textPrimary,
+    marginBottom: 8,
+  },
+  comingSoonFeature: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.gold,
+    marginBottom: 12,
+  },
+  comingSoonDesc: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  comingSoonBtn: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  comingSoonBtnGradient: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  comingSoonBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

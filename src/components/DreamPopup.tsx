@@ -6,13 +6,13 @@ import {
   StyleSheet,
   Alert,
   Animated,
-  Dimensions,
   ActivityIndicator,
   Platform,
   StatusBar,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import {
   useAudioRecorder,
@@ -25,20 +25,17 @@ import { File } from 'expo-file-system/next';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 
-const { width } = Dimensions.get('window');
-
-// Get status bar height safely
 const STATUSBAR_HEIGHT = Platform.OS === 'ios' ? 50 : (StatusBar.currentHeight || 24);
 
 const theme = {
-  primary: '#60a5fa',
-  glass: 'rgba(255, 255, 255, 0.1)',
-  glassBorder: 'rgba(255, 255, 255, 0.15)',
+  primary: '#8b5cf6',
+  primaryLight: 'rgba(139, 92, 246, 0.15)',
+  glass: 'rgba(255, 255, 255, 0.08)',
+  glassBorder: 'rgba(255, 255, 255, 0.12)',
   textPrimary: '#f1f5f9',
   textSecondary: '#94a3b8',
   danger: '#ef4444',
   success: '#10b981',
-  purple: '#8b5cf6',
 };
 
 interface DreamPopupProps {
@@ -60,7 +57,6 @@ function DreamPopup({ visible, onDismiss }: DreamPopupProps) {
   const slideAnim = useRef(new Animated.Value(-200)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // Slide in/out animation
   useEffect(() => {
     if (visible) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -79,13 +75,12 @@ function DreamPopup({ visible, onDismiss }: DreamPopupProps) {
     }
   }, [visible]);
 
-  // Pulse animation when recording
   useEffect(() => {
     if (isRecording) {
       Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
-            toValue: 1.2,
+            toValue: 1.3,
             duration: 500,
             useNativeDriver: true,
           }),
@@ -101,7 +96,6 @@ function DreamPopup({ visible, onDismiss }: DreamPopupProps) {
     }
   }, [isRecording]);
 
-  // Update duration
   useEffect(() => {
     if (recorderState.isRecording) {
       setRecordingDuration(Math.floor(recorderState.durationMillis / 1000));
@@ -245,33 +239,34 @@ function DreamPopup({ visible, onDismiss }: DreamPopupProps) {
       <BlurView intensity={80} tint="dark" style={styles.blurContainer}>
         <View style={styles.content}>
           
-          {/* Initial State - Quick Record */}
+          {/* Initial State */}
           {!isRecording && !audioUri && (
             <View style={styles.row}>
               <View style={styles.leftSection}>
-                <Text style={styles.moonEmoji}>🌙</Text>
+                <View style={styles.iconCircle}>
+                  <Ionicons name="moon" size={18} color={theme.primary} />
+                </View>
                 <View style={styles.textContainer}>
                   <Text style={styles.title}>Capture your dream</Text>
-                  <Text style={styles.subtitle}>Before it fades away...</Text>
+                  <Text style={styles.subtitle}>Before it fades away</Text>
                 </View>
               </View>
               
               <View style={styles.buttonRow}>
                 <TouchableOpacity
                   onPress={startRecording}
-                  style={styles.quickRecordButton}
                   activeOpacity={0.8}
                 >
                   <LinearGradient
-                    colors={[theme.purple, '#7c3aed']}
-                    style={styles.quickRecordGradient}
+                    colors={[theme.primary, '#7c3aed']}
+                    style={styles.recordButton}
                   >
-                    <Text style={styles.micIcon}>🎙️</Text>
+                    <Ionicons name="mic" size={20} color="#fff" />
                   </LinearGradient>
                 </TouchableOpacity>
                 
                 <TouchableOpacity onPress={handleDismiss} style={styles.dismissButton}>
-                  <Text style={styles.dismissText}>✕</Text>
+                  <Ionicons name="close" size={18} color={theme.textSecondary} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -279,7 +274,7 @@ function DreamPopup({ visible, onDismiss }: DreamPopupProps) {
 
           {/* Recording State */}
           {isRecording && (
-            <View style={styles.recordingRow}>
+            <View style={styles.row}>
               <View style={styles.recordingLeft}>
                 <Animated.View style={[styles.recordingDot, { transform: [{ scale: pulseAnim }] }]} />
                 <Text style={styles.recordingText}>Recording</Text>
@@ -288,10 +283,10 @@ function DreamPopup({ visible, onDismiss }: DreamPopupProps) {
               
               <View style={styles.buttonRow}>
                 <TouchableOpacity onPress={stopRecording} style={styles.stopButton}>
-                  <Text style={styles.stopIcon}>⏹</Text>
+                  <Ionicons name="stop" size={18} color="#fff" />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={handleDismiss} style={styles.dismissButton}>
-                  <Text style={styles.dismissText}>✕</Text>
+                  <Ionicons name="close" size={18} color={theme.textSecondary} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -299,15 +294,15 @@ function DreamPopup({ visible, onDismiss }: DreamPopupProps) {
 
           {/* Save State */}
           {audioUri && !isRecording && (
-            <View style={styles.saveRow}>
+            <View style={styles.row}>
               <View style={styles.saveLeft}>
                 <View style={styles.checkCircle}>
-                  <Text style={styles.checkIcon}>✓</Text>
+                  <Ionicons name="checkmark" size={16} color="#fff" />
                 </View>
                 <Text style={styles.capturedText}>{formatDuration(recordingDuration)}</Text>
               </View>
               
-              <View style={styles.saveButtons}>
+              <View style={styles.buttonRow}>
                 <TouchableOpacity
                   onPress={saveDream}
                   disabled={saving}
@@ -316,19 +311,22 @@ function DreamPopup({ visible, onDismiss }: DreamPopupProps) {
                   {saving ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
-                    <Text style={styles.saveButtonText}>💾 Save</Text>
+                    <>
+                      <Ionicons name="cloud-upload" size={16} color="#fff" />
+                      <Text style={styles.saveButtonText}>Save</Text>
+                    </>
                   )}
                 </TouchableOpacity>
                 
                 <TouchableOpacity
                   onPress={() => { setAudioUri(null); setRecordingDuration(0); }}
-                  style={styles.reRecordBtn}
+                  style={styles.iconButton}
                 >
-                  <Text style={styles.reRecordText}>🔄</Text>
+                  <Ionicons name="refresh" size={18} color={theme.primary} />
                 </TouchableOpacity>
                 
                 <TouchableOpacity onPress={handleDismiss} style={styles.dismissButton}>
-                  <Text style={styles.dismissText}>✕</Text>
+                  <Ionicons name="close" size={18} color={theme.textSecondary} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -359,8 +357,6 @@ const styles = StyleSheet.create({
   content: {
     padding: 14,
   },
-  
-  // Initial Row
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -371,9 +367,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  moonEmoji: {
-    fontSize: 26,
-    marginRight: 10,
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   textContainer: {
     flex: 1,
@@ -382,50 +383,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: theme.textPrimary,
+    letterSpacing: 0.2,
   },
   subtitle: {
     fontSize: 12,
     color: theme.textSecondary,
-    marginTop: 1,
+    marginTop: 2,
   },
   buttonRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
-  quickRecordButton: {
-    borderRadius: 18,
-    overflow: 'hidden',
-  },
-  quickRecordGradient: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  recordButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  micIcon: {
-    fontSize: 18,
-  },
   dismissButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: theme.glass,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  dismissText: {
-    color: theme.textSecondary,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-
-  // Recording Row
-  recordingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   recordingLeft: {
     flexDirection: 'row',
@@ -436,88 +419,69 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: theme.danger,
-    marginRight: 8,
+    marginRight: 10,
   },
   recordingText: {
     fontSize: 14,
     fontWeight: '600',
     color: theme.danger,
-    marginRight: 10,
+    marginRight: 12,
   },
   timerText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: theme.textPrimary,
     fontVariant: ['tabular-nums'],
+    letterSpacing: 1,
   },
   stopButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: theme.danger,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  stopIcon: {
-    fontSize: 16,
-    color: '#fff',
-  },
-
-  // Save Row
-  saveRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   saveLeft: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   checkCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: theme.success,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
   },
-  checkIcon: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
   capturedText: {
     fontSize: 16,
     fontWeight: '600',
     color: theme.textPrimary,
-  },
-  saveButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    letterSpacing: 0.5,
   },
   saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: theme.success,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 16,
+    paddingVertical: 10,
+    borderRadius: 18,
+    gap: 6,
   },
   saveButtonText: {
     color: '#fff',
     fontWeight: '600',
     fontSize: 14,
   },
-  reRecordBtn: {
+  iconButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
     backgroundColor: theme.glass,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  reRecordText: {
-    fontSize: 16,
   },
 });
 

@@ -12,7 +12,22 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { supabase } from '../lib/supabase';
-import { colors } from '../constants/colors';
+
+// Define colors inline to avoid import issues
+const theme = {
+  background: '#050a15',
+  backgroundGradientStart: '#050a15',
+  backgroundGradientEnd: '#0a1628',
+  glass: 'rgba(255, 255, 255, 0.03)',
+  glassBorder: 'rgba(255, 255, 255, 0.08)',
+  primary: '#60a5fa',
+  primaryGlow: 'rgba(96, 165, 250, 0.3)',
+  textPrimary: '#f1f5f9',
+  textSecondary: '#94a3b8',
+  textSubtle: '#475569',
+  inputBg: 'rgba(255, 255, 255, 0.03)',
+  inputBorder: 'rgba(255, 255, 255, 0.08)',
+};
 
 export default function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
@@ -40,7 +55,7 @@ export default function LoginScreen({ navigation }: any) {
 
   return (
     <LinearGradient
-      colors={[colors.backgroundGradientStart, colors.backgroundGradientEnd]}
+      colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]}
       style={styles.container}
     >
       <KeyboardAvoidingView
@@ -48,13 +63,11 @@ export default function LoginScreen({ navigation }: any) {
         style={styles.keyboardView}
       >
         <View style={styles.content}>
-          {/* Logo */}
           <View style={styles.logoContainer}>
             <Text style={styles.logo}>Àlá</Text>
             <Text style={styles.tagline}>Consciously Experience the Subconscious</Text>
           </View>
 
-          {/* Glass Form Card */}
           <View style={styles.formCard}>
             <BlurView intensity={20} tint="dark" style={styles.blurView}>
               <View style={styles.formInner}>
@@ -63,7 +76,7 @@ export default function LoginScreen({ navigation }: any) {
                   <TextInput
                     style={styles.input}
                     placeholder="your@email.com"
-                    placeholderTextColor={colors.textSubtle}
+                    placeholderTextColor={theme.textSubtle}
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
@@ -76,7 +89,7 @@ export default function LoginScreen({ navigation }: any) {
                   <TextInput
                     style={styles.input}
                     placeholder="Enter password"
-                    placeholderTextColor={colors.textSubtle}
+                    placeholderTextColor={theme.textSubtle}
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
@@ -97,7 +110,6 @@ export default function LoginScreen({ navigation }: any) {
             </BlurView>
           </View>
 
-          {/* Sign up link */}
           <TouchableOpacity
             style={styles.linkButton}
             onPress={() => navigation.navigate('Signup')}
@@ -131,59 +143,51 @@ const styles = StyleSheet.create({
   logo: {
     fontSize: 64,
     fontWeight: '700',
-    color: colors.textPrimary,
+    color: theme.textPrimary,
     letterSpacing: -2,
-    textShadowColor: colors.primaryGlow,
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 30,
   },
   tagline: {
     fontSize: 14,
-    color: colors.textSecondary,
+    color: theme.textSecondary,
     marginTop: 8,
   },
   formCard: {
     borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: theme.glassBorder,
   },
   blurView: {
     overflow: 'hidden',
   },
   formInner: {
     padding: 24,
-    backgroundColor: colors.glass,
+    backgroundColor: theme.glass,
   },
   inputContainer: {
     marginBottom: 20,
   },
   inputLabel: {
-    color: colors.textSecondary,
+    color: theme.textSecondary,
     fontSize: 13,
     marginBottom: 8,
     marginLeft: 4,
   },
   input: {
-    backgroundColor: colors.inputBg,
+    backgroundColor: theme.inputBg,
     borderRadius: 16,
     padding: 16,
     fontSize: 16,
-    color: colors.textPrimary,
+    color: theme.textPrimary,
     borderWidth: 1,
-    borderColor: colors.inputBorder,
+    borderColor: theme.inputBorder,
   },
   button: {
-    backgroundColor: colors.primary,
+    backgroundColor: theme.primary,
     borderRadius: 50,
     padding: 16,
     alignItems: 'center',
     marginTop: 8,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -198,11 +202,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   linkText: {
-    color: colors.textSecondary,
+    color: theme.textSecondary,
     fontSize: 14,
   },
   linkTextBold: {
-    color: colors.primary,
+    color: theme.primary,
     fontWeight: '600',
   },
 });

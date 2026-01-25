@@ -13,6 +13,8 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -42,7 +44,6 @@ const theme = {
   purple: '#a78bfa',
 };
 
-// Ambient gradients
 const AMBIENT_GRADIENTS: readonly [string, string, string][] = [
   ['#050a15', '#0a1628', '#0f172a'],
   ['#0a0f1a', '#121a2e', '#1a2744'],
@@ -54,7 +55,6 @@ const AMBIENT_GRADIENTS: readonly [string, string, string][] = [
 
 const GRADIENT_INTERVAL = 14000;
 
-// Animated Background
 const AnimatedGradientBackground = ({ children }: { children: React.ReactNode }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [nextIndex, setNextIndex] = useState(1);
@@ -64,7 +64,6 @@ const AnimatedGradientBackground = ({ children }: { children: React.ReactNode })
     const interval = setInterval(() => {
       const next = (currentIndex + 1) % AMBIENT_GRADIENTS.length;
       setNextIndex(next);
-
       Animated.timing(fadeAnim, {
         toValue: 0,
         duration: 2000,
@@ -74,25 +73,14 @@ const AnimatedGradientBackground = ({ children }: { children: React.ReactNode })
         fadeAnim.setValue(1);
       });
     }, GRADIENT_INTERVAL);
-
     return () => clearInterval(interval);
   }, [currentIndex]);
 
   return (
     <View style={styles.gradientContainer}>
-      <LinearGradient
-        colors={AMBIENT_GRADIENTS[nextIndex]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
+      <LinearGradient colors={AMBIENT_GRADIENTS[nextIndex]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: fadeAnim }]}>
-        <LinearGradient
-          colors={AMBIENT_GRADIENTS[currentIndex]}
-          style={StyleSheet.absoluteFill}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
+        <LinearGradient colors={AMBIENT_GRADIENTS[currentIndex]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
       </Animated.View>
       {children}
     </View>
@@ -102,7 +90,10 @@ const AnimatedGradientBackground = ({ children }: { children: React.ReactNode })
 interface Profile {
   id: string;
   username: string | null;
+  display_name: string | null;
   avatar_url: string | null;
+  bio: string | null;
+  is_public: boolean;
   created_at: string;
 }
 
@@ -119,16 +110,11 @@ export default function ProfileScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
-  // Photo picker modal
   const [showPhotoPicker, setShowPhotoPicker] = useState(false);
-
-  // Edit username modal
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [savingUsername, setSavingUsername] = useState(false);
-
-  // Settings modal
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
@@ -138,11 +124,10 @@ export default function ProfileScreen({ navigation }: any) {
 
   const fetchProfile = async () => {
     if (!user?.id) return;
-
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, username, display_name, avatar_url, bio, is_public, created_at')
         .eq('id', user.id)
         .single();
 
@@ -154,10 +139,15 @@ export default function ProfileScreen({ navigation }: any) {
         // Create profile if doesn't exist
         const { data: newProfile, error: createError } = await supabase
           .from('profiles')
-          .insert({ id: user.id, username: null, avatar_url: null })
+          .insert({
+            id: user.id,
+            username: null,
+            display_name: user.email?.split('@')[0] || null,
+            avatar_url: null,
+            is_public: true,
+          })
           .select()
           .single();
-
         if (createError) throw createError;
         setProfile(newProfile);
       }
@@ -170,7 +160,6 @@ export default function ProfileScreen({ navigation }: any) {
 
   const fetchStats = async () => {
     if (!user?.id) return;
-
     try {
       const { data: dreams, error } = await supabase
         .from('dreams')
@@ -182,7 +171,6 @@ export default function ProfileScreen({ navigation }: any) {
       const totalDreams = dreams?.length || 0;
       const publicDreams = dreams?.filter((d) => d.is_public).length || 0;
 
-      // Calculate streak
       let streak = 0;
       if (dreams && dreams.length > 0) {
         const sortedDates = [...new Set(dreams.map((d) => d.dream_date.split('T')[0]))].sort().reverse();
@@ -208,32 +196,29 @@ export default function ProfileScreen({ navigation }: any) {
   };
 
   const getAvatarUrl = () => {
-    if (profile?.avatar_url) {
-      return profile.avatar_url;
-    }
-    const name = profile?.username || user?.email || 'Dreamer';
+    if (profile?.avatar_url) return profile.avatar_url;
+    const name = profile?.display_name || profile?.username || user?.email || 'Dreamer';
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1e293b&color=60a5fa&size=200`;
   };
 
   const getDisplayName = () => {
-    return profile?.username ? `@${profile.username}` : 'Anonymous Dreamer';
+    if (profile?.username) return `@${profile.username}`;
+    if (profile?.display_name) return profile.display_name;
+    return 'Anonymous Dreamer';
   };
 
   const takePhoto = async () => {
     setShowPhotoPicker(false);
-
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Required', 'Camera access is needed to take photos.');
       return;
     }
-
     const result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
     });
-
     if (!result.canceled && result.assets[0]) {
       uploadAvatar(result.assets[0].uri);
     }
@@ -241,19 +226,16 @@ export default function ProfileScreen({ navigation }: any) {
 
   const pickImage = async () => {
     setShowPhotoPicker(false);
-
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Required', 'Photo library access is needed to select photos.');
       return;
     }
-
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
     });
-
     if (!result.canceled && result.assets[0]) {
       uploadAvatar(result.assets[0].uri);
     }
@@ -261,37 +243,26 @@ export default function ProfileScreen({ navigation }: any) {
 
   const uploadAvatar = async (uri: string) => {
     if (!user?.id) return;
-
     setUploading(true);
-
     try {
       const fileExt = uri.split('.').pop()?.toLowerCase() || 'jpg';
       const fileName = `${user.id}/avatar.${fileExt}`;
-
-      // Create form data for upload
       const formData = new FormData();
-      formData.append('file', {
-        uri,
-        name: fileName,
-        type: `image/${fileExt}`,
-      } as any);
+      formData.append('file', { uri, name: fileName, type: `image/${fileExt}` } as any);
 
-      // Upload to storage
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, formData, {
-        contentType: `image/${fileExt}`,
-        upsert: true,
-      });
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, formData, { contentType: `image/${fileExt}`, upsert: true });
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
-
-      // Add cache buster to force refresh
       const avatarUrl = `${urlData.publicUrl}?t=${Date.now()}`;
 
-      // Update profile
-      const { error: updateError } = await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', user.id);
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: avatarUrl })
+        .eq('id', user.id);
 
       if (updateError) throw updateError;
 
@@ -306,17 +277,15 @@ export default function ProfileScreen({ navigation }: any) {
 
   const removeAvatar = async () => {
     if (!user?.id) return;
-
     setShowPhotoPicker(false);
-
     try {
       setUploading(true);
-
-      // Update profile to remove avatar
-      const { error } = await supabase.from('profiles').update({ avatar_url: null }).eq('id', user.id);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ avatar_url: null })
+        .eq('id', user.id);
 
       if (error) throw error;
-
       setProfile((prev) => (prev ? { ...prev, avatar_url: null } : null));
     } catch (error: any) {
       Alert.alert('Error', 'Failed to remove photo');
@@ -340,8 +309,7 @@ export default function ProfileScreen({ navigation }: any) {
       .eq('username', username.toLowerCase())
       .neq('id', user?.id || '')
       .single();
-
-    return !data; // Available if no data found
+    return !data;
   };
 
   const saveUsername = async () => {
@@ -355,9 +323,7 @@ export default function ProfileScreen({ navigation }: any) {
     setUsernameError('');
 
     try {
-      // Check if username is taken
       const isAvailable = await checkUsernameAvailable(newUsername);
-
       if (!isAvailable) {
         setUsernameError('This username is already taken');
         setSavingUsername(false);
@@ -388,9 +354,7 @@ export default function ProfileScreen({ navigation }: any) {
       {
         text: 'Log Out',
         style: 'destructive',
-        onPress: async () => {
-          await supabase.auth.signOut();
-        },
+        onPress: async () => await supabase.auth.signOut(),
       },
     ]);
   };
@@ -400,280 +364,17 @@ export default function ProfileScreen({ navigation }: any) {
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
-  // Stats Card Component
-  const StatCard = ({ icon, value, label, color }: { icon: string; value: string | number; label: string; color: string }) => (
-    <View style={[styles.statCard, { borderColor: color + '30' }]}>
-      <View style={[styles.statIconWrap, { backgroundColor: color + '20' }]}>
-        <Ionicons name={icon as any} size={18} color={color} />
-      </View>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
+  const openUsernameModal = () => {
+    setNewUsername(profile?.username || '');
+    setUsernameError('');
+    setShowUsernameModal(true);
+  };
 
-  // Settings Row Component
-  const SettingsRow = ({
-    icon,
-    label,
-    value,
-    onPress,
-    showArrow = true,
-    danger = false,
-  }: {
-    icon: string;
-    label: string;
-    value?: string;
-    onPress?: () => void;
-    showArrow?: boolean;
-    danger?: boolean;
-  }) => (
-    <TouchableOpacity
-      style={styles.settingsRow}
-      onPress={onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-      disabled={!onPress}
-    >
-      <View style={[styles.settingsIconWrap, danger && { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
-        <Ionicons name={icon as any} size={18} color={danger ? theme.danger : theme.textSecondary} />
-      </View>
-      <View style={styles.settingsTextWrap}>
-        <Text style={[styles.settingsLabel, danger && { color: theme.danger }]}>{label}</Text>
-        {value && <Text style={styles.settingsValue}>{value}</Text>}
-      </View>
-      {showArrow && onPress && <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />}
-    </TouchableOpacity>
-  );
-
-  // Photo Picker Modal - Glassmorphism style
-  const PhotoPickerModal = () => (
-    <Modal visible={showPhotoPicker} transparent animationType="fade" onRequestClose={() => setShowPhotoPicker(false)}>
-      <Pressable style={styles.photoPickerOverlay} onPress={() => setShowPhotoPicker(false)}>
-        <Pressable style={styles.photoPickerContainer} onPress={(e) => e.stopPropagation()}>
-          <BlurView intensity={40} tint="dark" style={styles.photoPickerBlur}>
-            <View style={styles.photoPickerContent}>
-              <View style={styles.photoPickerHandle} />
-
-              <Text style={styles.photoPickerTitle}>Profile Photo</Text>
-              <Text style={styles.photoPickerSubtitle}>Choose how you want to add your photo</Text>
-
-              <View style={styles.photoPickerOptions}>
-                <TouchableOpacity style={styles.photoPickerOption} onPress={takePhoto} activeOpacity={0.7}>
-                  <View style={[styles.photoPickerIconWrap, { backgroundColor: theme.primary + '20' }]}>
-                    <Ionicons name="camera" size={26} color={theme.primary} />
-                  </View>
-                  <Text style={styles.photoPickerOptionLabel}>Take Photo</Text>
-                  <Text style={styles.photoPickerOptionDesc}>Use your camera</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.photoPickerOption} onPress={pickImage} activeOpacity={0.7}>
-                  <View style={[styles.photoPickerIconWrap, { backgroundColor: theme.purple + '20' }]}>
-                    <Ionicons name="images" size={26} color={theme.purple} />
-                  </View>
-                  <Text style={styles.photoPickerOptionLabel}>Choose Photo</Text>
-                  <Text style={styles.photoPickerOptionDesc}>From your library</Text>
-                </TouchableOpacity>
-              </View>
-
-              {profile?.avatar_url && (
-                <TouchableOpacity style={styles.photoPickerRemoveBtn} onPress={removeAvatar} activeOpacity={0.7}>
-                  <Ionicons name="trash-outline" size={18} color={theme.danger} />
-                  <Text style={styles.photoPickerRemoveText}>Remove Current Photo</Text>
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity style={styles.photoPickerCancelBtn} onPress={() => setShowPhotoPicker(false)} activeOpacity={0.7}>
-                <Text style={styles.photoPickerCancelText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </BlurView>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-
-  // Username Edit Modal
-  const UsernameModal = () => (
-    <Modal visible={showUsernameModal} transparent animationType="fade" onRequestClose={() => setShowUsernameModal(false)}>
-      <Pressable style={styles.modalOverlay} onPress={() => setShowUsernameModal(false)}>
-        <Pressable style={styles.modalContainer} onPress={(e) => e.stopPropagation()}>
-          <BlurView intensity={40} tint="dark" style={styles.modalBlur}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHandle} />
-
-              <Text style={styles.modalTitle}>Choose Your Username</Text>
-              <Text style={styles.modalSubtitle}>This is how others will see you. You can change it anytime as long as it's not taken.</Text>
-
-              <View style={styles.usernameInputWrap}>
-                <Text style={styles.usernamePrefix}>@</Text>
-                <TextInput
-                  style={styles.usernameInput}
-                  placeholder="username"
-                  placeholderTextColor={theme.textMuted}
-                  value={newUsername}
-                  onChangeText={(text) => {
-                    setNewUsername(text.toLowerCase().replace(/[^a-z0-9_]/g, ''));
-                    setUsernameError('');
-                  }}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  maxLength={20}
-                  autoFocus
-                />
-              </View>
-
-              {usernameError ? (
-                <View style={styles.errorRow}>
-                  <Ionicons name="alert-circle" size={14} color={theme.danger} />
-                  <Text style={styles.usernameError}>{usernameError}</Text>
-                </View>
-              ) : (
-                <Text style={styles.usernameHint}>3-20 characters • Letters, numbers, underscores only</Text>
-              )}
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={styles.modalCancelBtn}
-                  onPress={() => {
-                    setShowUsernameModal(false);
-                    setNewUsername('');
-                    setUsernameError('');
-                  }}
-                >
-                  <Text style={styles.modalCancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalSaveBtn, (!newUsername.trim() || savingUsername) && styles.modalSaveBtnDisabled]}
-                  onPress={saveUsername}
-                  disabled={!newUsername.trim() || savingUsername}
-                >
-                  {savingUsername ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.modalSaveText}>Save</Text>}
-                </TouchableOpacity>
-              </View>
-            </View>
-          </BlurView>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-
-  // Settings Modal
-  const SettingsModal = () => (
-    <Modal visible={showSettings} transparent animationType="slide" onRequestClose={() => setShowSettings(false)}>
-      <View style={styles.settingsModalOverlay}>
-        <SafeAreaView style={styles.settingsModalWrap}>
-          <LinearGradient colors={AMBIENT_GRADIENTS[0]} style={styles.settingsModalBg}>
-            {/* Header */}
-            <View style={styles.settingsHeader}>
-              <TouchableOpacity onPress={() => setShowSettings(false)} style={styles.settingsCloseBtn}>
-                <Ionicons name="chevron-down" size={28} color={theme.textPrimary} />
-              </TouchableOpacity>
-              <Text style={styles.settingsTitle}>Settings</Text>
-              <View style={{ width: 44 }} />
-            </View>
-
-            <ScrollView style={styles.settingsScroll} contentContainerStyle={styles.settingsScrollContent} showsVerticalScrollIndicator={false}>
-              {/* Account Section */}
-              <Text style={styles.settingsSectionTitle}>Account</Text>
-              <View style={styles.settingsCard}>
-                <SettingsRow
-                  icon="person-outline"
-                  label="Username"
-                  value={profile?.username ? `@${profile.username}` : 'Not set'}
-                  onPress={() => {
-                    setShowSettings(false);
-                    setTimeout(() => {
-                      setNewUsername(profile?.username || '');
-                      setShowUsernameModal(true);
-                    }, 300);
-                  }}
-                />
-                <View style={styles.settingsDivider} />
-                <SettingsRow icon="mail-outline" label="Email" value={user?.email || ''} showArrow={false} />
-              </View>
-
-              {/* Preferences Section */}
-              <Text style={styles.settingsSectionTitle}>Preferences</Text>
-              <View style={styles.settingsCard}>
-                <SettingsRow
-                  icon="eye-outline"
-                  label="Default Dream Visibility"
-                  value="Private"
-                  onPress={() => Alert.alert('Coming Soon', 'This setting will be available soon.')}
-                />
-                <View style={styles.settingsDivider} />
-                <SettingsRow
-                  icon="notifications-outline"
-                  label="Notifications"
-                  value="On"
-                  onPress={() => Alert.alert('Coming Soon', 'Notification settings coming soon.')}
-                />
-              </View>
-
-              {/* Privacy Section */}
-              <Text style={styles.settingsSectionTitle}>Privacy</Text>
-              <View style={styles.settingsCard}>
-                <SettingsRow
-                  icon="shield-checkmark-outline"
-                  label="Profile Visibility"
-                  value="Community"
-                  onPress={() => Alert.alert('Coming Soon', 'Privacy settings coming soon.')}
-                />
-              </View>
-
-              {/* Support Section */}
-              <Text style={styles.settingsSectionTitle}>Support</Text>
-              <View style={styles.settingsCard}>
-                <SettingsRow icon="help-circle-outline" label="Help & FAQ" onPress={() => Alert.alert('Help', 'Support documentation coming soon.')} />
-                <View style={styles.settingsDivider} />
-                <SettingsRow
-                  icon="document-text-outline"
-                  label="Terms of Service"
-                  onPress={() => Alert.alert('Terms', 'Terms of Service will open in browser.')}
-                />
-                <View style={styles.settingsDivider} />
-                <SettingsRow
-                  icon="lock-closed-outline"
-                  label="Privacy Policy"
-                  onPress={() => Alert.alert('Privacy', 'Privacy Policy will open in browser.')}
-                />
-              </View>
-
-              {/* Danger Zone */}
-              <Text style={styles.settingsSectionTitle}>Danger Zone</Text>
-              <View style={styles.settingsCard}>
-                <SettingsRow
-                  icon="trash-outline"
-                  label="Delete Account"
-                  danger
-                  onPress={() => {
-                    Alert.alert(
-                      'Delete Account',
-                      'This will permanently delete your account and all your dreams. This action cannot be undone.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Delete',
-                          style: 'destructive',
-                          onPress: () => Alert.alert('Contact Support', 'Please contact support to delete your account.'),
-                        },
-                      ]
-                    );
-                  }}
-                />
-              </View>
-
-              {/* App Info */}
-              <View style={styles.appInfo}>
-                <Text style={styles.appName}>Àlá</Text>
-                <Text style={styles.appVersion}>Version 1.0.0 (MVP)</Text>
-                <Text style={styles.appTagline}>Dream. Share. Discover.</Text>
-              </View>
-            </ScrollView>
-          </LinearGradient>
-        </SafeAreaView>
-      </View>
-    </Modal>
-  );
+  const closeUsernameModal = () => {
+    setShowUsernameModal(false);
+    setNewUsername('');
+    setUsernameError('');
+  };
 
   if (loading) {
     return (
@@ -704,8 +405,11 @@ export default function ProfileScreen({ navigation }: any) {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {/* Profile Section */}
           <View style={styles.profileSection}>
-            {/* Avatar */}
-            <TouchableOpacity onPress={() => setShowPhotoPicker(true)} activeOpacity={0.8} style={styles.avatarContainer}>
+            <TouchableOpacity
+              onPress={() => setShowPhotoPicker(true)}
+              activeOpacity={0.8}
+              style={styles.avatarContainer}
+            >
               <View style={styles.avatarGlow}>
                 {uploading ? (
                   <View style={[styles.avatar, styles.avatarLoading]}>
@@ -720,14 +424,7 @@ export default function ProfileScreen({ navigation }: any) {
               </View>
             </TouchableOpacity>
 
-            {/* Username */}
-            <TouchableOpacity
-              onPress={() => {
-                setNewUsername(profile?.username || '');
-                setShowUsernameModal(true);
-              }}
-              style={styles.usernameContainer}
-            >
+            <TouchableOpacity onPress={openUsernameModal} style={styles.usernameContainer}>
               <Text style={styles.displayName}>{getDisplayName()}</Text>
               <View style={styles.editIconWrap}>
                 <Ionicons name="pencil" size={12} color={theme.textMuted} />
@@ -739,44 +436,47 @@ export default function ProfileScreen({ navigation }: any) {
 
           {/* Stats */}
           <View style={styles.statsRow}>
-            <StatCard icon="book" value={stats.totalDreams} label="Dreams" color={theme.primary} />
-            <StatCard icon="flame" value={`${stats.streak}d`} label="Streak" color={theme.gold} />
-            <StatCard icon="globe" value={stats.publicDreams} label="Shared" color={theme.purple} />
+            <View style={[styles.statCard, { borderColor: theme.primary + '30' }]}>
+              <View style={[styles.statIconWrap, { backgroundColor: theme.primary + '20' }]}>
+                <Ionicons name="book" size={18} color={theme.primary} />
+              </View>
+              <Text style={styles.statValue}>{stats.totalDreams}</Text>
+              <Text style={styles.statLabel}>Dreams</Text>
+            </View>
+            <View style={[styles.statCard, { borderColor: theme.gold + '30' }]}>
+              <View style={[styles.statIconWrap, { backgroundColor: theme.gold + '20' }]}>
+                <Ionicons name="flame" size={18} color={theme.gold} />
+              </View>
+              <Text style={styles.statValue}>{stats.streak}d</Text>
+              <Text style={styles.statLabel}>Streak</Text>
+            </View>
+            <View style={[styles.statCard, { borderColor: theme.purple + '30' }]}>
+              <View style={[styles.statIconWrap, { backgroundColor: theme.purple + '20' }]}>
+                <Ionicons name="globe" size={18} color={theme.purple} />
+              </View>
+              <Text style={styles.statValue}>{stats.publicDreams}</Text>
+              <Text style={styles.statLabel}>Shared</Text>
+            </View>
           </View>
 
           {/* Coming Soon */}
           <Text style={styles.sectionTitle}>Coming Soon</Text>
-          <View style={styles.comingSoonCard}>
-            <View style={styles.comingSoonRow}>
-              <Text style={styles.comingSoonIcon}>🌙</Text>
-              <View style={styles.comingSoonText}>
-                <Text style={styles.comingSoonTitle}>Dream Circles</Text>
-                <Text style={styles.comingSoonDesc}>Share dreams with close friends</Text>
+          {[
+            { icon: '🌙', title: 'Dream Circles', desc: 'Share dreams with close friends' },
+            { icon: '✨', title: 'AI Dream Analysis', desc: 'Discover patterns in your dreams' },
+            { icon: '🔮', title: 'Lucid Training', desc: 'Learn to control your dreams' },
+          ].map((item, index) => (
+            <View key={index} style={styles.comingSoonCard}>
+              <View style={styles.comingSoonRow}>
+                <Text style={styles.comingSoonIcon}>{item.icon}</Text>
+                <View style={styles.comingSoonText}>
+                  <Text style={styles.comingSoonTitle}>{item.title}</Text>
+                  <Text style={styles.comingSoonDesc}>{item.desc}</Text>
+                </View>
               </View>
             </View>
-          </View>
+          ))}
 
-          <View style={styles.comingSoonCard}>
-            <View style={styles.comingSoonRow}>
-              <Text style={styles.comingSoonIcon}>✨</Text>
-              <View style={styles.comingSoonText}>
-                <Text style={styles.comingSoonTitle}>AI Dream Analysis</Text>
-                <Text style={styles.comingSoonDesc}>Discover patterns in your dreams</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.comingSoonCard}>
-            <View style={styles.comingSoonRow}>
-              <Text style={styles.comingSoonIcon}>🔮</Text>
-              <View style={styles.comingSoonText}>
-                <Text style={styles.comingSoonTitle}>Lucid Training</Text>
-                <Text style={styles.comingSoonDesc}>Learn to control your dreams</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Logout */}
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={20} color={theme.danger} />
             <Text style={styles.logoutText}>Log Out</Text>
@@ -784,27 +484,231 @@ export default function ProfileScreen({ navigation }: any) {
         </ScrollView>
       </SafeAreaView>
 
-      <PhotoPickerModal />
-      <UsernameModal />
-      <SettingsModal />
+      {/* Photo Picker Modal */}
+      <Modal
+        visible={showPhotoPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPhotoPicker(false)}
+      >
+        <Pressable style={styles.photoPickerOverlay} onPress={() => setShowPhotoPicker(false)}>
+          <Pressable style={styles.photoPickerContainer} onPress={(e) => e.stopPropagation()}>
+            <BlurView intensity={40} tint="dark" style={styles.photoPickerBlur}>
+              <View style={styles.photoPickerContent}>
+                <View style={styles.photoPickerHandle} />
+                <Text style={styles.photoPickerTitle}>Profile Photo</Text>
+                <Text style={styles.photoPickerSubtitle}>Choose how you want to add your photo</Text>
+                <View style={styles.photoPickerOptions}>
+                  <TouchableOpacity style={styles.photoPickerOption} onPress={takePhoto} activeOpacity={0.7}>
+                    <View style={[styles.photoPickerIconWrap, { backgroundColor: theme.primary + '20' }]}>
+                      <Ionicons name="camera" size={26} color={theme.primary} />
+                    </View>
+                    <Text style={styles.photoPickerOptionLabel}>Take Photo</Text>
+                    <Text style={styles.photoPickerOptionDesc}>Use your camera</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.photoPickerOption} onPress={pickImage} activeOpacity={0.7}>
+                    <View style={[styles.photoPickerIconWrap, { backgroundColor: theme.purple + '20' }]}>
+                      <Ionicons name="images" size={26} color={theme.purple} />
+                    </View>
+                    <Text style={styles.photoPickerOptionLabel}>Choose Photo</Text>
+                    <Text style={styles.photoPickerOptionDesc}>From your library</Text>
+                  </TouchableOpacity>
+                </View>
+                {profile?.avatar_url && (
+                  <TouchableOpacity style={styles.photoPickerRemoveBtn} onPress={removeAvatar} activeOpacity={0.7}>
+                    <Ionicons name="trash-outline" size={18} color={theme.danger} />
+                    <Text style={styles.photoPickerRemoveText}>Remove Current Photo</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.photoPickerCancelBtn}
+                  onPress={() => setShowPhotoPicker(false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.photoPickerCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </BlurView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Username Modal */}
+      <Modal
+        visible={showUsernameModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeUsernameModal}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <Pressable style={styles.modalOverlay} onPress={closeUsernameModal}>
+            <Pressable style={styles.modalContainer} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHandle} />
+                <Text style={styles.modalTitle}>Choose Your Username</Text>
+                <Text style={styles.modalSubtitle}>This is how others will see you.</Text>
+
+                <View style={styles.usernameInputWrap}>
+                  <Text style={styles.usernamePrefix}>@</Text>
+                  <TextInput
+                    style={styles.usernameInput}
+                    placeholder="username"
+                    placeholderTextColor={theme.textMuted}
+                    value={newUsername}
+                    onChangeText={(text) => {
+                      setNewUsername(text.toLowerCase().replace(/[^a-z0-9_]/g, ''));
+                      setUsernameError('');
+                    }}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    maxLength={20}
+                    autoFocus
+                  />
+                </View>
+
+                {usernameError ? (
+                  <View style={styles.errorRow}>
+                    <Ionicons name="alert-circle" size={14} color={theme.danger} />
+                    <Text style={styles.usernameError}>{usernameError}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.usernameHint}>3-20 characters • Letters, numbers, underscores</Text>
+                )}
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.modalCancelBtn} onPress={closeUsernameModal}>
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalSaveBtn,
+                      (!newUsername.trim() || savingUsername) && styles.modalSaveBtnDisabled,
+                    ]}
+                    onPress={saveUsername}
+                    disabled={!newUsername.trim() || savingUsername}
+                  >
+                    {savingUsername ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.modalSaveText}>Save</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Settings Modal */}
+      <Modal
+        visible={showSettings}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSettings(false)}
+      >
+        <View style={styles.settingsModalOverlay}>
+          <SafeAreaView style={styles.settingsModalWrap}>
+            <LinearGradient colors={AMBIENT_GRADIENTS[0]} style={styles.settingsModalBg}>
+              <View style={styles.settingsHeader}>
+                <TouchableOpacity onPress={() => setShowSettings(false)} style={styles.settingsCloseBtn}>
+                  <Ionicons name="chevron-down" size={28} color={theme.textPrimary} />
+                </TouchableOpacity>
+                <Text style={styles.settingsTitle}>Settings</Text>
+                <View style={{ width: 44 }} />
+              </View>
+
+              <ScrollView
+                style={styles.settingsScroll}
+                contentContainerStyle={styles.settingsScrollContent}
+                showsVerticalScrollIndicator={false}
+              >
+                <Text style={styles.settingsSectionTitle}>Account</Text>
+                <View style={styles.settingsCard}>
+                  <TouchableOpacity
+                    style={styles.settingsRow}
+                    onPress={() => {
+                      setShowSettings(false);
+                      setTimeout(openUsernameModal, 300);
+                    }}
+                  >
+                    <View style={styles.settingsIconWrap}>
+                      <Ionicons name="person-outline" size={18} color={theme.textSecondary} />
+                    </View>
+                    <View style={styles.settingsTextWrap}>
+                      <Text style={styles.settingsLabel}>Username</Text>
+                      <Text style={styles.settingsValue}>
+                        {profile?.username ? `@${profile.username}` : 'Not set'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+                  </TouchableOpacity>
+                  <View style={styles.settingsDivider} />
+                  <View style={styles.settingsRow}>
+                    <View style={styles.settingsIconWrap}>
+                      <Ionicons name="mail-outline" size={18} color={theme.textSecondary} />
+                    </View>
+                    <View style={styles.settingsTextWrap}>
+                      <Text style={styles.settingsLabel}>Email</Text>
+                      <Text style={styles.settingsValue}>{user?.email || ''}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <Text style={styles.settingsSectionTitle}>Privacy</Text>
+                <View style={styles.settingsCard}>
+                  <View style={styles.settingsRow}>
+                    <View style={styles.settingsIconWrap}>
+                      <Ionicons name="eye-outline" size={18} color={theme.textSecondary} />
+                    </View>
+                    <View style={styles.settingsTextWrap}>
+                      <Text style={styles.settingsLabel}>Profile Visibility</Text>
+                      <Text style={styles.settingsValue}>
+                        {profile?.is_public ? 'Public' : 'Private'}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+                  </View>
+                </View>
+
+                <Text style={styles.settingsSectionTitle}>Preferences</Text>
+                <View style={styles.settingsCard}>
+                  <TouchableOpacity
+                    style={styles.settingsRow}
+                    onPress={() => Alert.alert('Coming Soon', 'This setting will be available soon.')}
+                  >
+                    <View style={styles.settingsIconWrap}>
+                      <Ionicons name="moon-outline" size={18} color={theme.textSecondary} />
+                    </View>
+                    <View style={styles.settingsTextWrap}>
+                      <Text style={styles.settingsLabel}>Default Dream Visibility</Text>
+                      <Text style={styles.settingsValue}>Private</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.appInfo}>
+                  <Text style={styles.appName}>Àlá</Text>
+                  <Text style={styles.appVersion}>Version 1.0.0</Text>
+                </View>
+              </ScrollView>
+            </LinearGradient>
+          </SafeAreaView>
+        </View>
+      </Modal>
     </AnimatedGradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  gradientContainer: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  gradientContainer: { flex: 1 },
+  safeArea: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -822,26 +726,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.textPrimary,
-  },
+  headerTitle: { fontSize: 18, fontWeight: '600', color: theme.textPrimary },
 
-  content: {
-    padding: 20,
-    paddingBottom: 40,
-  },
+  content: { padding: 20, paddingBottom: 40 },
 
-  // Profile Section
-  profileSection: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginBottom: 16,
-  },
+  profileSection: { alignItems: 'center', marginBottom: 24 },
+  avatarContainer: { position: 'relative', marginBottom: 16 },
   avatarGlow: {
     shadowColor: theme.primary,
     shadowOffset: { width: 0, height: 0 },
@@ -879,11 +769,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  displayName: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: theme.textPrimary,
-  },
+  displayName: { fontSize: 22, fontWeight: '700', color: theme.textPrimary },
   editIconWrap: {
     width: 24,
     height: 24,
@@ -893,17 +779,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: 8,
   },
-  memberSince: {
-    fontSize: 13,
-    color: theme.textSubtle,
-  },
+  memberSince: { fontSize: 13, color: theme.textSubtle },
 
-  // Stats
-  statsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 28,
-  },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 28 },
   statCard: {
     flex: 1,
     backgroundColor: theme.glass,
@@ -920,18 +798,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: theme.textPrimary,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: theme.textSubtle,
-    marginTop: 2,
-  },
+  statValue: { fontSize: 20, fontWeight: '700', color: theme.textPrimary },
+  statLabel: { fontSize: 11, color: theme.textSubtle, marginTop: 2 },
 
-  // Section Title
   sectionTitle: {
     fontSize: 13,
     fontWeight: '600',
@@ -942,7 +811,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
-  // Coming Soon
   comingSoonCard: {
     backgroundColor: theme.glass,
     borderRadius: 16,
@@ -951,31 +819,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.glassBorder,
   },
-  comingSoonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  comingSoonIcon: {
-    fontSize: 28,
-    marginRight: 14,
-    width: 36,
-    textAlign: 'center',
-  },
-  comingSoonText: {
-    flex: 1,
-  },
-  comingSoonTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.textPrimary,
-    marginBottom: 2,
-  },
-  comingSoonDesc: {
-    fontSize: 13,
-    color: theme.textSecondary,
-  },
+  comingSoonRow: { flexDirection: 'row', alignItems: 'center' },
+  comingSoonIcon: { fontSize: 28, marginRight: 14, width: 36, textAlign: 'center' },
+  comingSoonText: { flex: 1 },
+  comingSoonTitle: { fontSize: 15, fontWeight: '600', color: theme.textPrimary, marginBottom: 2 },
+  comingSoonDesc: { fontSize: 13, color: theme.textSecondary },
 
-  // Logout
   logoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -988,13 +837,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.2)',
   },
-  logoutText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.danger,
-  },
+  logoutText: { fontSize: 15, fontWeight: '600', color: theme.danger },
 
-  // Photo Picker Modal
+  // Photo Picker
   photoPickerOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -1006,16 +851,11 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: 'hidden',
   },
-  photoPickerBlur: {
-    overflow: 'hidden',
-    borderRadius: 24,
-  },
+  photoPickerBlur: { overflow: 'hidden', borderRadius: 24 },
   photoPickerContent: {
-    backgroundColor: 'rgba(15, 20, 35, 0.85)',
+    backgroundColor: 'rgba(15, 20, 35, 0.9)',
     padding: 20,
     paddingTop: 12,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
     borderRadius: 24,
   },
   photoPickerHandle: {
@@ -1039,11 +879,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24,
   },
-  photoPickerOptions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-  },
+  photoPickerOptions: { flexDirection: 'row', gap: 12, marginBottom: 16 },
   photoPickerOption: {
     flex: 1,
     backgroundColor: theme.glass,
@@ -1067,10 +903,7 @@ const styles = StyleSheet.create({
     color: theme.textPrimary,
     marginBottom: 4,
   },
-  photoPickerOptionDesc: {
-    fontSize: 12,
-    color: theme.textMuted,
-  },
+  photoPickerOptionDesc: { fontSize: 12, color: theme.textMuted },
   photoPickerRemoveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1079,28 +912,16 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 14,
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
     marginBottom: 12,
   },
-  photoPickerRemoveText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.danger,
-  },
+  photoPickerRemoveText: { fontSize: 14, fontWeight: '600', color: theme.danger },
   photoPickerCancelBtn: {
     paddingVertical: 14,
     borderRadius: 14,
     backgroundColor: theme.glass,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
   },
-  photoPickerCancelText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.textSecondary,
-  },
+  photoPickerCancelText: { fontSize: 15, fontWeight: '600', color: theme.textSecondary },
 
   // Username Modal
   modalOverlay: {
@@ -1109,20 +930,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
-  modalContainer: {
-    borderRadius: 24,
-    overflow: 'hidden',
-  },
-  modalBlur: {
-    overflow: 'hidden',
-    borderRadius: 24,
-  },
+  modalContainer: { borderRadius: 24, overflow: 'hidden' },
   modalContent: {
-    backgroundColor: 'rgba(15, 20, 35, 0.85)',
+    backgroundColor: 'rgba(15, 20, 35, 0.95)',
     padding: 24,
     paddingTop: 12,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
     borderRadius: 24,
   },
   modalHandle: {
@@ -1145,7 +957,6 @@ const styles = StyleSheet.create({
     color: theme.textSecondary,
     textAlign: 'center',
     marginBottom: 24,
-    lineHeight: 20,
   },
   usernameInputWrap: {
     flexDirection: 'row',
@@ -1156,17 +967,8 @@ const styles = StyleSheet.create({
     borderColor: theme.glassBorder,
     paddingHorizontal: 16,
   },
-  usernamePrefix: {
-    fontSize: 18,
-    color: theme.textMuted,
-    marginRight: 2,
-  },
-  usernameInput: {
-    flex: 1,
-    fontSize: 18,
-    color: theme.textPrimary,
-    paddingVertical: 14,
-  },
+  usernamePrefix: { fontSize: 18, color: theme.textMuted, marginRight: 2 },
+  usernameInput: { flex: 1, fontSize: 18, color: theme.textPrimary, paddingVertical: 14 },
   errorRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1174,35 +976,17 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginLeft: 4,
   },
-  usernameError: {
-    fontSize: 13,
-    color: theme.danger,
-  },
-  usernameHint: {
-    fontSize: 12,
-    color: theme.textMuted,
-    marginTop: 10,
-    marginLeft: 4,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 24,
-  },
+  usernameError: { fontSize: 13, color: theme.danger },
+  usernameHint: { fontSize: 12, color: theme.textMuted, marginTop: 10, marginLeft: 4 },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
   modalCancelBtn: {
     flex: 1,
     paddingVertical: 14,
     borderRadius: 14,
     backgroundColor: theme.glass,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
   },
-  modalCancelText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.textSecondary,
-  },
+  modalCancelText: { fontSize: 15, fontWeight: '600', color: theme.textSecondary },
   modalSaveBtn: {
     flex: 1,
     paddingVertical: 14,
@@ -1210,20 +994,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.primary,
     alignItems: 'center',
   },
-  modalSaveBtnDisabled: {
-    backgroundColor: theme.glass,
-  },
-  modalSaveText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-  },
+  modalSaveBtnDisabled: { backgroundColor: theme.glass },
+  modalSaveText: { fontSize: 15, fontWeight: '600', color: '#fff' },
 
   // Settings Modal
-  settingsModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
+  settingsModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   settingsModalWrap: {
     flex: 1,
     marginTop: 40,
@@ -1231,9 +1006,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     overflow: 'hidden',
   },
-  settingsModalBg: {
-    flex: 1,
-  },
+  settingsModalBg: { flex: 1 },
   settingsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1243,24 +1016,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: theme.glassBorder,
   },
-  settingsCloseBtn: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  settingsTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.textPrimary,
-  },
-  settingsScroll: {
-    flex: 1,
-  },
-  settingsScrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
+  settingsCloseBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  settingsTitle: { fontSize: 18, fontWeight: '600', color: theme.textPrimary },
+  settingsScroll: { flex: 1 },
+  settingsScrollContent: { padding: 20, paddingBottom: 40 },
   settingsSectionTitle: {
     fontSize: 12,
     fontWeight: '600',
@@ -1278,11 +1037,7 @@ const styles = StyleSheet.create({
     borderColor: theme.glassBorder,
     overflow: 'hidden',
   },
-  settingsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-  },
+  settingsRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
   settingsIconWrap: {
     width: 36,
     height: 36,
@@ -1292,26 +1047,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
   },
-  settingsTextWrap: {
-    flex: 1,
-  },
-  settingsLabel: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: theme.textPrimary,
-  },
-  settingsValue: {
-    fontSize: 13,
-    color: theme.textMuted,
-    marginTop: 2,
-  },
-  settingsDivider: {
-    height: 1,
-    backgroundColor: theme.glassBorder,
-    marginLeft: 62,
-  },
-
-  // App Info
+  settingsTextWrap: { flex: 1 },
+  settingsLabel: { fontSize: 15, fontWeight: '500', color: theme.textPrimary },
+  settingsValue: { fontSize: 13, color: theme.textMuted, marginTop: 2 },
+  settingsDivider: { height: 1, backgroundColor: theme.glassBorder, marginLeft: 62 },
   appInfo: {
     alignItems: 'center',
     marginTop: 40,
@@ -1319,23 +1058,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: theme.glassBorder,
   },
-  appName: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: theme.gold,
-    textShadowColor: 'rgba(212, 175, 55, 0.5)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 15,
-  },
-  appVersion: {
-    fontSize: 12,
-    color: theme.textMuted,
-    marginTop: 4,
-  },
-  appTagline: {
-    fontSize: 13,
-    color: theme.textSubtle,
-    marginTop: 8,
-    fontStyle: 'italic',
-  },
+  appName: { fontSize: 28, fontWeight: '700', color: theme.gold },
+  appVersion: { fontSize: 12, color: theme.textMuted, marginTop: 4 },
 });

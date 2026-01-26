@@ -14,6 +14,7 @@ import {
   BackHandler,
   Modal,
   Pressable,
+  Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -51,39 +52,36 @@ const theme = {
   purple: '#a78bfa',
 };
 
-// Mood-based gradient palettes
-const MOOD_GRADIENTS: { [key: string]: string[] } = {
-  default: ['#050a15', '#0a1628', '#0f172a'],
-  peaceful: ['#051515', '#0a2828', '#0f3535'],
-  exciting: ['#150a05', '#281a0a', '#35250f'],
-  scary: ['#150510', '#28081a', '#350a25'],
-  confusing: ['#0f0a15', '#1a1028', '#251535'],
-  sad: ['#050a15', '#081428', '#0a1a35'],
-  happy: ['#15150a', '#28281a', '#353525'],
-  weird: ['#150a15', '#281a28', '#352535'],
-  vivid: ['#0a1015', '#142028', '#1a3035'],
-  custom: ['#100a15', '#1a1428', '#251a35'],
-};
+// 7 ambient gradients for auto-transition (14 seconds each)
+const AMBIENT_GRADIENTS: readonly [string, string, string][] = [
+  ['#050a15', '#0a1628', '#0f172a'],
+  ['#0a0f1a', '#121a2e', '#1a2744'],
+  ['#0d0a15', '#1a1428', '#261e3d'],
+  ['#0a1210', '#122420', '#1a3530'],
+  ['#100a0a', '#201414', '#301e1e'],
+  ['#0a0d14', '#141e2d', '#1e2e45'],
+  ['#0f0a14', '#1a142a', '#251e40'],
+];
+
+const GRADIENT_INTERVAL = 14000;
+const GRADIENT_FADE_DURATION = 4000;
 
 type InterpretationMode = 'disabled' | 'public' | 'private' | 'verified_only';
+type DreamType = 'dream' | 'nightmare' | null;
 
-interface MoodOption {
+interface DreamTag {
   id: string;
   icon: string;
   label: string;
 }
 
-const MOODS: MoodOption[] = [
-  { id: 'peaceful', icon: '😌', label: 'Peaceful' },
-  { id: 'exciting', icon: '🤩', label: 'Exciting' },
-  { id: 'scary', icon: '😨', label: 'Scary' },
-  { id: 'confusing', icon: '😕', label: 'Confusing' },
-  { id: 'sad', icon: '😢', label: 'Sad' },
-  { id: 'happy', icon: '😊', label: 'Happy' },
-  { id: 'weird', icon: '🤪', label: 'Weird' },
-  { id: 'vivid', icon: '✨', label: 'Vivid' },
-  { id: 'custom', icon: '✏️', label: 'Other' },
+// Simplified tags - only sparkles & butterfly for dreams, cobweb for nightmares
+const DREAM_TAGS: DreamTag[] = [
+  { id: 'sparkles', icon: '✨', label: 'Stardust' },
+  { id: 'butterfly', icon: '🦋', label: 'Butterfly' },
 ];
+
+const NIGHTMARE_TAGS: DreamTag[] = [{ id: 'cobweb', icon: '🕸️', label: 'Cobwebs' }];
 
 const NUM_BARS = 32;
 
@@ -95,6 +93,52 @@ const RECORDING_PROMPTS = [
   'Speak your vision...',
   'Share the story...',
 ];
+
+// Animated Gradient Background Component with smoother transitions
+const AnimatedGradientBackground = ({ children }: { children: React.ReactNode }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [nextIndex, setNextIndex] = useState(1);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const next = (currentIndex + 1) % AMBIENT_GRADIENTS.length;
+      setNextIndex(next);
+
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: GRADIENT_FADE_DURATION,
+        easing: Easing.inOut(Easing.ease),
+        useNativeDriver: true,
+      }).start(() => {
+        setCurrentIndex(next);
+        fadeAnim.setValue(1);
+      });
+    }, GRADIENT_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [currentIndex, fadeAnim]);
+
+  return (
+    <View style={styles.gradientContainer}>
+      <LinearGradient
+        colors={AMBIENT_GRADIENTS[nextIndex]}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: fadeAnim }]}>
+        <LinearGradient
+          colors={AMBIENT_GRADIENTS[currentIndex]}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+      </Animated.View>
+      {children}
+    </View>
+  );
+};
 
 export default function RecordDreamScreen({ navigation }: any) {
   const user = useAuthStore((state) => state.user);
@@ -113,36 +157,38 @@ export default function RecordDreamScreen({ navigation }: any) {
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
 
-  // Form State - Medium-style single editor
+  // Form State
   const [dreamContent, setDreamContent] = useState('');
   const [dreamDate, setDreamDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [selectedMood, setSelectedMood] = useState<string | null>(null);
-  const [customMood, setCustomMood] = useState('');
-  const [showCustomMoodInput, setShowCustomMoodInput] = useState(false);
+  const [dreamType, setDreamType] = useState<DreamType>(null);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [isPublic, setIsPublic] = useState(false);
   const [interpretationMode, setInterpretationMode] = useState<InterpretationMode>('disabled');
   const [enableEngagement, setEnableEngagement] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Success Modal
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
   // Animations
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const waveAnims = useRef(Array.from({ length: NUM_BARS }, () => new Animated.Value(0.3))).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
-  const gradientAnim = useRef(new Animated.Value(0)).current;
+  const successScaleAnim = useRef(new Animated.Value(0.8)).current;
+  const successOpacityAnim = useRef(new Animated.Value(0)).current;
 
   // Random prompt
   const [promptIndex] = useState(Math.floor(Math.random() * RECORDING_PROMPTS.length));
 
-  // Extract title from content (Medium-style)
+  // Extract title from content
   const extractedTitle = useMemo(() => {
     if (!dreamContent.trim()) return '';
     const lines = dreamContent.split('\n');
     const firstLine = lines[0].trim();
-    // If first line is short enough, use it as title
     if (firstLine.length <= 60) return firstLine;
-    // Otherwise, take first 60 chars and add ellipsis
     return firstLine.substring(0, 57) + '...';
   }, [dreamContent]);
 
@@ -155,20 +201,12 @@ export default function RecordDreamScreen({ navigation }: any) {
 
   const hasContent = dreamContent.trim() || audioUri;
 
-  // Mood-based gradient colors
-  const currentGradient = useMemo(() => {
-    const moodKey = selectedMood || 'default';
-    return MOOD_GRADIENTS[moodKey] || MOOD_GRADIENTS.default;
-  }, [selectedMood]);
-
-  // Animate gradient change
-  useEffect(() => {
-    Animated.timing(gradientAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: false,
-    }).start(() => gradientAnim.setValue(0));
-  }, [selectedMood]);
+  // Get available tags based on dream type
+  const availableTags = useMemo(() => {
+    if (dreamType === 'dream') return DREAM_TAGS;
+    if (dreamType === 'nightmare') return NIGHTMARE_TAGS;
+    return [];
+  }, [dreamType]);
 
   // Handle back with confirmation
   useEffect(() => {
@@ -187,7 +225,7 @@ export default function RecordDreamScreen({ navigation }: any) {
           text: 'Discard',
           style: 'destructive',
           onPress: () => {
-            player.pause();
+            safelyPausePlayer();
             navigation.goBack();
           },
         },
@@ -196,6 +234,17 @@ export default function RecordDreamScreen({ navigation }: any) {
       navigation.goBack();
     }
   };
+
+  // Safe player pause function to prevent crash
+  const safelyPausePlayer = useCallback(() => {
+    try {
+      if (player && playerStatus.playing) {
+        player.pause();
+      }
+    } catch (error) {
+      console.log('Player already released or paused');
+    }
+  }, [player, playerStatus.playing]);
 
   // Pulse animation
   useEffect(() => {
@@ -212,7 +261,7 @@ export default function RecordDreamScreen({ navigation }: any) {
       pulseAnim.setValue(1);
     }
     return () => animation?.stop();
-  }, [isRecording]);
+  }, [isRecording, pulseAnim]);
 
   // Waveform animation
   useEffect(() => {
@@ -244,14 +293,14 @@ export default function RecordDreamScreen({ navigation }: any) {
       });
     }
     return () => animations.forEach((a) => a.stop());
-  }, [isRecording]);
+  }, [isRecording, waveAnims]);
 
   // Track duration
   useEffect(() => {
     if (recorderState.isRecording) {
       setRecordingDuration(Math.floor(recorderState.durationMillis / 1000));
     }
-  }, [recorderState.durationMillis]);
+  }, [recorderState.durationMillis, recorderState.isRecording]);
 
   // Reset options when private
   useEffect(() => {
@@ -280,11 +329,16 @@ export default function RecordDreamScreen({ navigation }: any) {
         useNativeDriver: false,
       }).start();
     }
-  }, [playerStatus.currentTime, playerStatus.duration]);
+  }, [playerStatus.currentTime, playerStatus.duration, progressAnim]);
 
   useEffect(() => {
-    return () => player.pause();
-  }, []);
+    return () => safelyPausePlayer();
+  }, [safelyPausePlayer]);
+
+  // Reset tag when dream type changes
+  useEffect(() => {
+    setSelectedTag(null);
+  }, [dreamType]);
 
   const startRecording = async () => {
     try {
@@ -295,7 +349,7 @@ export default function RecordDreamScreen({ navigation }: any) {
       }
 
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      if (isPreviewPlaying) player.pause();
+      safelyPausePlayer();
       setAudioUri(null);
 
       await recorder.prepareToRecordAsync();
@@ -340,6 +394,45 @@ export default function RecordDreamScreen({ navigation }: any) {
     }
   };
 
+  const showSuccess = (message: string) => {
+    setSuccessMessage(message);
+    setShowSuccessModal(true);
+
+    Animated.parallel([
+      Animated.spring(successScaleAnim, {
+        toValue: 1,
+        friction: 8,
+        tension: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(successOpacityAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const hideSuccess = () => {
+    Animated.parallel([
+      Animated.timing(successScaleAnim, {
+        toValue: 0.8,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(successOpacityAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowSuccessModal(false);
+      successScaleAnim.setValue(0.8);
+      successOpacityAnim.setValue(0);
+      navigation.goBack();
+    });
+  };
+
   const saveDream = async (isDraft = false) => {
     if (!dreamContent.trim() && !audioUri) {
       Alert.alert('Empty Dream', 'Please record or write something before saving.');
@@ -350,7 +443,9 @@ export default function RecordDreamScreen({ navigation }: any) {
 
     try {
       let audioUrl = null;
-      if (isPreviewPlaying) player.pause();
+
+      // Safely pause player before saving
+      safelyPausePlayer();
 
       if (audioUri) {
         const fileExt = audioUri.split('.').pop() || 'm4a';
@@ -374,19 +469,19 @@ export default function RecordDreamScreen({ navigation }: any) {
         }
       }
 
-      const moodValue = selectedMood === 'custom' ? customMood.trim() || 'custom' : selectedMood;
-
       const { error: dbError } = await supabase.from('dreams').insert({
         user_id: user?.id,
         title: extractedTitle || null,
         content: extractedContent || dreamContent.trim() || null,
         audio_url: audioUrl,
+        audio_duration: audioUri ? recordingDuration : null,
         is_public: isPublic,
         status: isDraft ? 'draft' : 'published',
         interpretation_mode: isPublic ? interpretationMode : 'disabled',
         enable_engagement: isPublic ? enableEngagement : false,
         dream_date: dreamDate.toISOString().split('T')[0],
-        mood: moodValue,
+        dream_type: dreamType,
+        dream_tag: selectedTag,
       });
 
       if (dbError) throw dbError;
@@ -394,10 +489,10 @@ export default function RecordDreamScreen({ navigation }: any) {
       const message = isDraft
         ? 'Saved to drafts'
         : isPublic
-        ? 'Shared with the community'
-        : 'Added to your journal';
+          ? 'Shared with the community'
+          : 'Added to your journal';
 
-      Alert.alert('Dream Captured ✨', message, [{ text: 'Done', onPress: () => navigation.goBack() }]);
+      showSuccess(message);
     } catch (error: any) {
       console.error('Error saving dream:', error);
       Alert.alert('Error', error.message || 'Failed to save dream');
@@ -430,15 +525,8 @@ export default function RecordDreamScreen({ navigation }: any) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const selectMood = (moodId: string) => {
-    if (moodId === 'custom') {
-      setSelectedMood('custom');
-      setShowCustomMoodInput(true);
-    } else {
-      setSelectedMood(selectedMood === moodId ? null : moodId);
-      setShowCustomMoodInput(false);
-      setCustomMood('');
-    }
+  const selectDreamType = (type: DreamType) => {
+    setDreamType(dreamType === type ? null : type);
   };
 
   // Waveform Bar
@@ -473,7 +561,12 @@ export default function RecordDreamScreen({ navigation }: any) {
     ];
 
     return (
-      <Modal visible={showDatePicker} transparent animationType="fade" onRequestClose={() => setShowDatePicker(false)}>
+      <Modal
+        visible={showDatePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDatePicker(false)}
+      >
         <Pressable style={styles.dateModalOverlay} onPress={() => setShowDatePicker(false)}>
           <Pressable style={styles.dateModalContent} onPress={(e) => e.stopPropagation()}>
             <View style={styles.dateModalHeader}>
@@ -517,14 +610,11 @@ export default function RecordDreamScreen({ navigation }: any) {
               <View style={styles.dateModalDividerLine} />
             </View>
 
-            {/* Simple date selector for older dates */}
             <View style={styles.olderDateSection}>
               <Text style={styles.olderDateHint}>For dreams older than 2 days</Text>
               <TouchableOpacity
                 style={styles.olderDateBtn}
                 onPress={() => {
-                  // For MVP, we'll use a simple approach
-                  // In production, you'd use a proper calendar component
                   Alert.alert(
                     'Select Date',
                     'For MVP, dreams can be logged from the last 3 nights. Full calendar coming soon!',
@@ -545,51 +635,48 @@ export default function RecordDreamScreen({ navigation }: any) {
     );
   };
 
-  // Custom Mood Input Modal
-  const CustomMoodModal = () => (
-    <Modal visible={showCustomMoodInput} transparent animationType="fade" onRequestClose={() => setShowCustomMoodInput(false)}>
-      <Pressable style={styles.dateModalOverlay} onPress={() => setShowCustomMoodInput(false)}>
-        <Pressable style={styles.customMoodContent} onPress={(e) => e.stopPropagation()}>
-          <Text style={styles.customMoodTitle}>How did this dream feel?</Text>
-          <TextInput
-            style={styles.customMoodInput}
-            placeholder="Describe the feeling..."
-            placeholderTextColor={theme.textMuted}
-            value={customMood}
-            onChangeText={setCustomMood}
-            autoFocus
-            maxLength={30}
-          />
-          <View style={styles.customMoodActions}>
-            <TouchableOpacity
-              style={styles.customMoodCancel}
-              onPress={() => {
-                setShowCustomMoodInput(false);
-                setSelectedMood(null);
-                setCustomMood('');
-              }}
-            >
-              <Text style={styles.customMoodCancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.customMoodSave, !customMood.trim() && styles.customMoodSaveDisabled]}
-              onPress={() => {
-                if (customMood.trim()) {
-                  setShowCustomMoodInput(false);
-                }
-              }}
-              disabled={!customMood.trim()}
-            >
-              <Text style={styles.customMoodSaveText}>Done</Text>
+  // Success Modal with Glassmorphism
+  const SuccessModal = () => (
+    <Modal visible={showSuccessModal} transparent animationType="none" onRequestClose={hideSuccess}>
+      <View style={styles.successOverlay}>
+        <Animated.View
+          style={[
+            styles.successCard,
+            {
+              opacity: successOpacityAnim,
+              transform: [{ scale: successScaleAnim }],
+            },
+          ]}
+        >
+          <View style={styles.successGlass}>
+            <View style={styles.successIconWrap}>
+              <LinearGradient colors={[theme.gold + '40', theme.gold + '10']} style={styles.successIconBg}>
+                <Ionicons name="moon" size={40} color={theme.gold} />
+              </LinearGradient>
+            </View>
+
+            <Text style={styles.successTitle}>Dream Captured</Text>
+            <Text style={styles.successMessage}>{successMessage}</Text>
+
+            <View style={styles.successStars}>
+              <Text style={styles.successStar}>✨</Text>
+              <Text style={[styles.successStar, styles.successStarMid]}>🌙</Text>
+              <Text style={styles.successStar}>✨</Text>
+            </View>
+
+            <TouchableOpacity style={styles.successBtn} onPress={hideSuccess}>
+              <LinearGradient colors={[theme.gold, '#b8962e']} style={styles.successBtnGradient}>
+                <Text style={styles.successBtnText}>Done</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
-        </Pressable>
-      </Pressable>
+        </Animated.View>
+      </View>
     </Modal>
   );
 
   return (
-    <LinearGradient colors={currentGradient as any} style={styles.container}>
+    <AnimatedGradientBackground>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}
         <View style={styles.header}>
@@ -634,17 +721,14 @@ export default function RecordDreamScreen({ navigation }: any) {
               {/* Recording */}
               {isRecording && (
                 <View style={styles.recordingActive}>
-                  {/* Waveform */}
                   <View style={styles.waveformContainer}>
                     {waveAnims.map((anim, i) => (
                       <WaveformBar key={i} anim={anim} index={i} />
                     ))}
                   </View>
 
-                  {/* Timer */}
                   <Text style={styles.recordingTimer}>{formatDuration(recordingDuration)}</Text>
 
-                  {/* Stop Button */}
                   <TouchableOpacity onPress={stopRecording} style={styles.stopBtnWrapper}>
                     <Animated.View style={[styles.pulseRing, { transform: [{ scale: pulseAnim }] }]} />
                     <View style={styles.stopBtn}>
@@ -666,7 +750,6 @@ export default function RecordDreamScreen({ navigation }: any) {
                     <Text style={styles.previewLabel}>{formatDuration(recordingDuration)} recorded</Text>
                   </View>
 
-                  {/* Player */}
                   <View style={styles.playerContainer}>
                     <TouchableOpacity onPress={togglePreview} style={styles.playPauseBtn}>
                       <Ionicons name={isPreviewPlaying ? 'pause' : 'play'} size={22} color="#fff" />
@@ -696,14 +779,12 @@ export default function RecordDreamScreen({ navigation }: any) {
                       </View>
                     </TouchableOpacity>
 
-                    <Text style={styles.playerTime}>
-                      {formatPlayerTime(playerStatus.currentTime)}
-                    </Text>
+                    <Text style={styles.playerTime}>{formatPlayerTime(playerStatus.currentTime)}</Text>
                   </View>
 
                   <TouchableOpacity
                     onPress={() => {
-                      if (isPreviewPlaying) player.pause();
+                      safelyPausePlayer();
                       setAudioUri(null);
                       setRecordingDuration(0);
                     }}
@@ -716,21 +797,16 @@ export default function RecordDreamScreen({ navigation }: any) {
               )}
             </View>
 
-            {/* Medium-style Editor */}
+            {/* Editor */}
             <View style={styles.editorSection}>
-              {/* Date pill */}
               <TouchableOpacity style={styles.datePill} onPress={() => setShowDatePicker(true)}>
                 <Ionicons name="moon-outline" size={14} color={theme.textSubtle} />
                 <Text style={styles.datePillText}>{formatDateLabel(dreamDate)}</Text>
                 <Ionicons name="chevron-down" size={14} color={theme.textMuted} />
               </TouchableOpacity>
 
-              {/* Title preview (if content exists) */}
-              {extractedTitle && (
-                <Text style={styles.titlePreview}>{extractedTitle}</Text>
-              )}
+              {extractedTitle && <Text style={styles.titlePreview}>{extractedTitle}</Text>}
 
-              {/* Main editor */}
               <TextInput
                 style={[styles.dreamEditor, extractedTitle ? styles.dreamEditorWithTitle : null]}
                 placeholder="Start with a title, then describe your dream..."
@@ -742,41 +818,79 @@ export default function RecordDreamScreen({ navigation }: any) {
                 scrollEnabled={false}
               />
 
-              {/* Formatting hint */}
-              {!dreamContent && (
-                <Text style={styles.editorHint}>
-                  First line becomes the title
-                </Text>
-              )}
+              {!dreamContent && <Text style={styles.editorHint}>First line becomes the title</Text>}
             </View>
 
-            {/* Mood Section */}
-            <View style={styles.moodSection}>
-              <Text style={styles.sectionLabel}>The dream felt...</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.moodScroll}
-              >
-                {MOODS.map((mood) => {
-                  const isSelected = selectedMood === mood.id;
-                  const displayLabel = mood.id === 'custom' && customMood ? customMood : mood.label;
-                  
-                  return (
-                    <TouchableOpacity
-                      key={mood.id}
-                      style={[styles.moodChip, isSelected && styles.moodChipActive]}
-                      onPress={() => selectMood(mood.id)}
-                    >
-                      <Text style={styles.moodEmoji}>{mood.icon}</Text>
-                      <Text style={[styles.moodLabel, isSelected && styles.moodLabelActive]}>
-                        {displayLabel}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+            {/* Dream Type Section - Compact */}
+            <View style={styles.dreamTypeSection}>
+              <Text style={styles.sectionLabel}>What kind of dream?</Text>
+              <View style={styles.dreamTypeRow}>
+                <TouchableOpacity
+                  style={[styles.dreamTypeChip, dreamType === 'dream' && styles.dreamTypeChipActiveDream]}
+                  onPress={() => selectDreamType('dream')}
+                >
+                  <Text style={[styles.dreamTypeChipLabel, dreamType === 'dream' && styles.dreamTypeChipLabelActive]}>
+                    Dream
+                  </Text>
+                  <Text style={styles.dreamTypeChipDesc}>Pleasant</Text>
+                  {dreamType === 'dream' && (
+                    <Ionicons name="checkmark-circle" size={16} color={theme.primary} style={styles.dreamTypeChipCheck} />
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.dreamTypeChip, dreamType === 'nightmare' && styles.dreamTypeChipActiveNightmare]}
+                  onPress={() => selectDreamType('nightmare')}
+                >
+                  <Text
+                    style={[
+                      styles.dreamTypeChipLabel,
+                      dreamType === 'nightmare' && styles.dreamTypeChipLabelActiveNightmare,
+                    ]}
+                  >
+                    Nightmare
+                  </Text>
+                  <Text style={styles.dreamTypeChipDesc}>Unsettling</Text>
+                  {dreamType === 'nightmare' && (
+                    <Ionicons name="checkmark-circle" size={16} color={theme.danger} style={styles.dreamTypeChipCheck} />
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
+
+            {/* Tag Selection */}
+            {dreamType && (
+              <View style={styles.tagSection}>
+                <Text style={styles.sectionLabel}>{dreamType === 'dream' ? 'Add a vibe' : 'Set the mood'}</Text>
+                <View style={styles.tagRow}>
+                  {availableTags.map((tag) => {
+                    const isSelected = selectedTag === tag.id;
+                    const isNightmare = dreamType === 'nightmare';
+
+                    return (
+                      <TouchableOpacity
+                        key={tag.id}
+                        style={[
+                          styles.tagChip,
+                          isSelected && (isNightmare ? styles.tagChipActiveNightmare : styles.tagChipActive),
+                        ]}
+                        onPress={() => setSelectedTag(isSelected ? null : tag.id)}
+                      >
+                        <Text style={styles.tagEmoji}>{tag.icon}</Text>
+                        <Text
+                          style={[
+                            styles.tagLabel,
+                            isSelected && (isNightmare ? styles.tagLabelActiveNightmare : styles.tagLabelActive),
+                          ]}
+                        >
+                          {tag.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
 
             {/* Visibility */}
             <View style={styles.visibilitySection}>
@@ -816,21 +930,13 @@ export default function RecordDreamScreen({ navigation }: any) {
             {/* Advanced Options */}
             {isPublic && (
               <>
-                <TouchableOpacity
-                  style={styles.advancedToggle}
-                  onPress={() => setShowAdvanced(!showAdvanced)}
-                >
+                <TouchableOpacity style={styles.advancedToggle} onPress={() => setShowAdvanced(!showAdvanced)}>
                   <Text style={styles.advancedToggleText}>Sharing options</Text>
-                  <Ionicons
-                    name={showAdvanced ? 'chevron-up' : 'chevron-down'}
-                    size={18}
-                    color={theme.textMuted}
-                  />
+                  <Ionicons name={showAdvanced ? 'chevron-up' : 'chevron-down'} size={18} color={theme.textMuted} />
                 </TouchableOpacity>
 
                 {showAdvanced && (
                   <View style={styles.advancedContent}>
-                    {/* Interpretations */}
                     <View style={styles.optionGroup}>
                       <Text style={styles.optionTitle}>Community Interpretations</Text>
                       <View style={styles.interpretationRow}>
@@ -841,10 +947,7 @@ export default function RecordDreamScreen({ navigation }: any) {
                         ].map((mode) => (
                           <TouchableOpacity
                             key={mode.id}
-                            style={[
-                              styles.interpOption,
-                              interpretationMode === mode.id && styles.interpOptionActive,
-                            ]}
+                            style={[styles.interpOption, interpretationMode === mode.id && styles.interpOptionActive]}
                             onPress={() => setInterpretationMode(mode.id as InterpretationMode)}
                           >
                             <Ionicons
@@ -853,10 +956,7 @@ export default function RecordDreamScreen({ navigation }: any) {
                               color={interpretationMode === mode.id ? theme.primary : theme.textSubtle}
                             />
                             <Text
-                              style={[
-                                styles.interpLabel,
-                                interpretationMode === mode.id && styles.interpLabelActive,
-                              ]}
+                              style={[styles.interpLabel, interpretationMode === mode.id && styles.interpLabelActive]}
                             >
                               {mode.label}
                             </Text>
@@ -865,20 +965,14 @@ export default function RecordDreamScreen({ navigation }: any) {
                       </View>
                     </View>
 
-                    {/* Likes */}
-                    <TouchableOpacity
-                      style={styles.likesToggle}
-                      onPress={() => setEnableEngagement(!enableEngagement)}
-                    >
+                    <TouchableOpacity style={styles.likesToggle} onPress={() => setEnableEngagement(!enableEngagement)}>
                       <View style={styles.likesInfo}>
                         <Ionicons
                           name={enableEngagement ? 'heart' : 'heart-outline'}
                           size={18}
                           color={enableEngagement ? theme.danger : theme.textSubtle}
                         />
-                        <Text style={[styles.likesText, enableEngagement && styles.likesTextActive]}>
-                          Allow likes
-                        </Text>
+                        <Text style={[styles.likesText, enableEngagement && styles.likesTextActive]}>Allow likes</Text>
                       </View>
                       <View style={[styles.toggleTrack, enableEngagement && styles.toggleTrackActive]}>
                         <View style={[styles.toggleThumb, enableEngagement && styles.toggleThumbActive]} />
@@ -904,11 +998,7 @@ export default function RecordDreamScreen({ navigation }: any) {
             </View>
 
             {/* Draft Button */}
-            <TouchableOpacity
-              style={styles.draftBtn}
-              onPress={() => saveDream(true)}
-              disabled={saving || !hasContent}
-            >
+            <TouchableOpacity style={styles.draftBtn} onPress={() => saveDream(true)} disabled={saving || !hasContent}>
               <Ionicons name="bookmark-outline" size={16} color={theme.textSecondary} />
               <Text style={styles.draftBtnText}>Save as draft</Text>
             </TouchableOpacity>
@@ -917,17 +1007,16 @@ export default function RecordDreamScreen({ navigation }: any) {
       </SafeAreaView>
 
       <DatePickerModal />
-      <CustomMoodModal />
-    </LinearGradient>
+      <SuccessModal />
+    </AnimatedGradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  gradientContainer: { flex: 1 },
   safeArea: { flex: 1 },
   flex: { flex: 1 },
 
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -961,7 +1050,6 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
 
-  // Recording
   recordSection: {
     marginBottom: 24,
   },
@@ -995,7 +1083,6 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
 
-  // Recording Active
   recordingActive: {
     alignItems: 'center',
     paddingVertical: 24,
@@ -1053,7 +1140,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
 
-  // Preview
   previewState: {
     backgroundColor: theme.glass,
     borderRadius: 20,
@@ -1130,7 +1216,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Editor
   editorSection: {
     marginBottom: 24,
   },
@@ -1175,22 +1260,70 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  // Mood
-  moodSection: {
-    marginBottom: 24,
+  // Compact Dream Type Section
+  dreamTypeSection: {
+    marginBottom: 20,
   },
   sectionLabel: {
     fontSize: 14,
     color: theme.textSecondary,
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  moodScroll: {
-    gap: 8,
+  dreamTypeRow: {
+    flexDirection: 'row',
+    gap: 10,
   },
-  moodChip: {
+  dreamTypeChip: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: theme.glass,
+    borderWidth: 1,
+    borderColor: theme.glassBorder,
+    gap: 8,
+  },
+  dreamTypeChipActiveDream: {
+    backgroundColor: 'rgba(96, 165, 250, 0.1)',
+    borderColor: theme.primary,
+  },
+  dreamTypeChipActiveNightmare: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: theme.danger,
+  },
+  dreamTypeChipLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.textSecondary,
+  },
+  dreamTypeChipLabelActive: {
+    color: theme.primary,
+  },
+  dreamTypeChipLabelActiveNightmare: {
+    color: theme.danger,
+  },
+  dreamTypeChipDesc: {
+    fontSize: 11,
+    color: theme.textMuted,
+    flex: 1,
+  },
+  dreamTypeChipCheck: {
+    marginLeft: 'auto',
+  },
+
+  tagSection: {
+    marginBottom: 20,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 20,
@@ -1198,23 +1331,29 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.glassBorder,
   },
-  moodChipActive: {
+  tagChipActive: {
     backgroundColor: 'rgba(96, 165, 250, 0.15)',
     borderColor: theme.primary,
   },
-  moodEmoji: {
+  tagChipActiveNightmare: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: theme.danger,
+  },
+  tagEmoji: {
     fontSize: 16,
   },
-  moodLabel: {
-    fontSize: 14,
+  tagLabel: {
+    fontSize: 13,
     color: theme.textSecondary,
     fontWeight: '500',
   },
-  moodLabelActive: {
+  tagLabelActive: {
     color: theme.primary,
   },
+  tagLabelActiveNightmare: {
+    color: theme.danger,
+  },
 
-  // Visibility
   visibilitySection: {
     gap: 10,
     marginBottom: 20,
@@ -1271,7 +1410,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Advanced
   advancedToggle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1369,7 +1507,6 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
 
-  // AI Card
   aiCard: {
     backgroundColor: 'rgba(212, 175, 55, 0.08)',
     borderRadius: 16,
@@ -1408,7 +1545,6 @@ const styles = StyleSheet.create({
     color: theme.gold,
   },
 
-  // Draft
   draftBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1422,7 +1558,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Date Modal
   dateModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
@@ -1527,63 +1662,74 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Custom Mood Modal
-  customMoodContent: {
-    backgroundColor: theme.background,
-    marginHorizontal: 20,
-    marginTop: 'auto',
-    marginBottom: 'auto',
-    borderRadius: 20,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
+  successOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
   },
-  customMoodTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.textPrimary,
-    marginBottom: 16,
-    textAlign: 'center',
+  successCard: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 28,
+    overflow: 'hidden',
   },
-  customMoodInput: {
-    backgroundColor: theme.glass,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: theme.textPrimary,
+  successGlass: {
+    padding: 32,
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
     borderWidth: 1,
-    borderColor: theme.glassBorder,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 28,
+  },
+  successIconWrap: {
     marginBottom: 20,
-    textAlign: 'center',
   },
-  customMoodActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  customMoodCancel: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: theme.glass,
+  successIconBg: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  customMoodCancelText: {
+  successTitle: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: theme.textPrimary,
+    marginBottom: 8,
+  },
+  successMessage: {
     fontSize: 15,
-    fontWeight: '600',
     color: theme.textSecondary,
+    textAlign: 'center',
+    marginBottom: 20,
   },
-  customMoodSave: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: theme.primary,
+  successStars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginBottom: 28,
+  },
+  successStar: {
+    fontSize: 20,
+    opacity: 0.6,
+  },
+  successStarMid: {
+    fontSize: 28,
+    opacity: 1,
+  },
+  successBtn: {
+    width: '100%',
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  successBtnGradient: {
+    paddingVertical: 16,
     alignItems: 'center',
   },
-  customMoodSaveDisabled: {
-    backgroundColor: theme.glass,
-  },
-  customMoodSaveText: {
-    fontSize: 15,
+  successBtnText: {
+    fontSize: 16,
     fontWeight: '600',
     color: '#fff',
   },

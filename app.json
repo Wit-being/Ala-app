@@ -37,7 +37,8 @@
           "frequentUpdates": false,
           "widgetsFolder": "widgets"
         }
-      ]
+      ],
+      "expo-mail-composer"
     ]
   }
 }

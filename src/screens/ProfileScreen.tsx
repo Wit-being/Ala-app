@@ -15,6 +15,8 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
+  Switch,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,8 +25,10 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
+import { useFeedback } from '../providers/FeedbackProvider';
 
-const { width } = Dimensions.get('window');
+const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const DISMISS_THRESHOLD = 120;
 
 const theme = {
   background: '#050a15',
@@ -54,6 +58,28 @@ const AMBIENT_GRADIENTS: readonly [string, string, string][] = [
 ];
 
 const GRADIENT_INTERVAL = 14000;
+
+// Badge configuration
+const BADGES = {
+  founding_dreamer: {
+    icon: '🌟',
+    label: 'Founding Dreamer',
+    color: theme.gold,
+    description: 'One of the first 50 dreamers',
+  },
+  verified_interpreter: {
+    icon: '🔮',
+    label: 'Verified Interpreter',
+    color: theme.purple,
+    description: 'Highly rated dream interpreter',
+  },
+  verified: {
+    icon: '✓',
+    label: 'Verified',
+    color: theme.primary,
+    description: 'Verified account',
+  },
+};
 
 const AnimatedGradientBackground = ({ children }: { children: React.ReactNode }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -94,6 +120,13 @@ interface Profile {
   avatar_url: string | null;
   bio: string | null;
   is_public: boolean;
+  is_founding_dreamer: boolean;
+  is_verified_interpreter: boolean;
+  is_verified: boolean;
+  interpreter_rating: number;
+  total_interpretations: number;
+  username_changed_at: string | null;
+  account_number: number | null;
   created_at: string;
 }
 
@@ -105,6 +138,7 @@ interface DreamStats {
 
 export default function ProfileScreen({ navigation }: any) {
   const user = useAuthStore((state) => state.user);
+  const { openFeedback } = useFeedback();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stats, setStats] = useState<DreamStats>({ totalDreams: 0, publicDreams: 0, streak: 0 });
   const [loading, setLoading] = useState(true);
@@ -116,18 +150,85 @@ export default function ProfileScreen({ navigation }: any) {
   const [usernameError, setUsernameError] = useState('');
   const [savingUsername, setSavingUsername] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showBadgeInfo, setShowBadgeInfo] = useState<string | null>(null);
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
+
+  // Settings modal animation
+  const settingsTranslateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const settingsBackdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     fetchProfile();
     fetchStats();
   }, [user?.id]);
 
+  // Settings modal animation
+  useEffect(() => {
+    if (showSettings) {
+      Animated.parallel([
+        Animated.spring(settingsTranslateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          damping: 25,
+          stiffness: 200,
+        }),
+        Animated.timing(settingsBackdropOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [showSettings]);
+
+  const closeSettingsModal = () => {
+    Animated.parallel([
+      Animated.timing(settingsTranslateY, {
+        toValue: SCREEN_HEIGHT,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+      Animated.timing(settingsBackdropOpacity, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowSettings(false);
+    });
+  };
+
+  const settingsPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return gestureState.dy > 15 && Math.abs(gestureState.dx) < Math.abs(gestureState.dy);
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          settingsTranslateY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > DISMISS_THRESHOLD || gestureState.vy > 0.5) {
+          closeSettingsModal();
+        } else {
+          Animated.spring(settingsTranslateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            damping: 25,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
   const fetchProfile = async () => {
     if (!user?.id) return;
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url, bio, is_public, created_at')
+        .select('*')
         .eq('id', user.id)
         .single();
 
@@ -136,7 +237,6 @@ export default function ProfileScreen({ navigation }: any) {
       if (data) {
         setProfile(data);
       } else {
-        // Create profile if doesn't exist
         const { data: newProfile, error: createError } = await supabase
           .from('profiles')
           .insert({
@@ -195,6 +295,39 @@ export default function ProfileScreen({ navigation }: any) {
     }
   };
 
+  const hasBadge = () => {
+    return profile?.is_founding_dreamer || profile?.is_verified_interpreter || profile?.is_verified;
+  };
+
+  const getUserBadges = () => {
+    const badges: string[] = [];
+    if (profile?.is_founding_dreamer) badges.push('founding_dreamer');
+    if (profile?.is_verified_interpreter) badges.push('verified_interpreter');
+    if (profile?.is_verified) badges.push('verified');
+    return badges;
+  };
+
+  const canChangeUsername = () => {
+    if (!profile?.username) return true;
+    if (!profile?.username_changed_at) return true;
+    
+    const lastChanged = new Date(profile.username_changed_at);
+    const now = new Date();
+    const daysSinceChange = Math.floor((now.getTime() - lastChanged.getTime()) / (1000 * 60 * 60 * 24));
+    
+    return daysSinceChange >= 14;
+  };
+
+  const daysUntilUsernameChange = () => {
+    if (!profile?.username_changed_at) return 0;
+    
+    const lastChanged = new Date(profile.username_changed_at);
+    const now = new Date();
+    const daysSinceChange = Math.floor((now.getTime() - lastChanged.getTime()) / (1000 * 60 * 60 * 24));
+    
+    return Math.max(0, 14 - daysSinceChange);
+  };
+
   const getAvatarUrl = () => {
     if (profile?.avatar_url) return profile.avatar_url;
     const name = profile?.display_name || profile?.username || user?.email || 'Dreamer';
@@ -205,6 +338,38 @@ export default function ProfileScreen({ navigation }: any) {
     if (profile?.username) return `@${profile.username}`;
     if (profile?.display_name) return profile.display_name;
     return 'Anonymous Dreamer';
+  };
+
+  const getMemberText = () => {
+    const date = new Date(user?.created_at || profile?.created_at || '');
+    const formattedDate = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    
+    if (hasBadge()) {
+      return `Conscious before ${formattedDate}`;
+    }
+    return `Dreaming since ${formattedDate}`;
+  };
+
+  const toggleProfileVisibility = async () => {
+    if (!user?.id || !profile) return;
+    
+    setTogglingVisibility(true);
+    try {
+      const newVisibility = !profile.is_public;
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_public: newVisibility })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      
+      setProfile((prev) => prev ? { ...prev, is_public: newVisibility } : null);
+    } catch (error: any) {
+      console.error('Error toggling visibility:', error);
+      Alert.alert('Error', 'Failed to update profile visibility');
+    } finally {
+      setTogglingVisibility(false);
+    }
   };
 
   const takePhoto = async () => {
@@ -313,6 +478,12 @@ export default function ProfileScreen({ navigation }: any) {
   };
 
   const saveUsername = async () => {
+    if (!canChangeUsername()) {
+      const days = daysUntilUsernameChange();
+      setUsernameError(`You can change your username in ${days} day${days !== 1 ? 's' : ''}`);
+      return;
+    }
+
     const validationError = validateUsername(newUsername);
     if (validationError) {
       setUsernameError(validationError);
@@ -332,12 +503,19 @@ export default function ProfileScreen({ navigation }: any) {
 
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ username: newUsername.toLowerCase() })
+        .update({ 
+          username: newUsername.toLowerCase(),
+          username_changed_at: new Date().toISOString()
+        })
         .eq('id', user?.id);
 
       if (updateError) throw updateError;
 
-      setProfile((prev) => (prev ? { ...prev, username: newUsername.toLowerCase() } : null));
+      setProfile((prev) => (prev ? { 
+        ...prev, 
+        username: newUsername.toLowerCase(),
+        username_changed_at: new Date().toISOString()
+      } : null));
       setShowUsernameModal(false);
       setNewUsername('');
     } catch (error: any) {
@@ -359,12 +537,16 @@ export default function ProfileScreen({ navigation }: any) {
     ]);
   };
 
-  const memberSince = () => {
-    const date = new Date(user?.created_at || profile?.created_at || '');
-    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  };
-
   const openUsernameModal = () => {
+    if (!canChangeUsername()) {
+      const days = daysUntilUsernameChange();
+      Alert.alert(
+        'Username Locked',
+        `You can change your username again in ${days} day${days !== 1 ? 's' : ''}.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     setNewUsername(profile?.username || '');
     setUsernameError('');
     setShowUsernameModal(true);
@@ -374,6 +556,28 @@ export default function ProfileScreen({ navigation }: any) {
     setShowUsernameModal(false);
     setNewUsername('');
     setUsernameError('');
+  };
+
+  const renderBadge = (badgeKey: string, size: 'small' | 'large' = 'small') => {
+    const badge = BADGES[badgeKey as keyof typeof BADGES];
+    if (!badge) return null;
+
+    const isSmall = size === 'small';
+    
+    return (
+      <TouchableOpacity
+        key={badgeKey}
+        onPress={() => setShowBadgeInfo(badgeKey)}
+        style={[
+          styles.badge,
+          { backgroundColor: badge.color + '20', borderColor: badge.color + '40' },
+          isSmall ? styles.badgeSmall : styles.badgeLarge,
+        ]}
+      >
+        <Text style={isSmall ? styles.badgeIconSmall : styles.badgeIconLarge}>{badge.icon}</Text>
+        {!isSmall && <Text style={[styles.badgeLabel, { color: badge.color }]}>{badge.label}</Text>}
+      </TouchableOpacity>
+    );
   };
 
   if (loading) {
@@ -387,6 +591,8 @@ export default function ProfileScreen({ navigation }: any) {
       </AnimatedGradientBackground>
     );
   }
+
+  const userBadges = getUserBadges();
 
   return (
     <AnimatedGradientBackground>
@@ -410,19 +616,28 @@ export default function ProfileScreen({ navigation }: any) {
               activeOpacity={0.8}
               style={styles.avatarContainer}
             >
-              <View style={styles.avatarGlow}>
+              <View style={[styles.avatarGlow, hasBadge() && { shadowColor: theme.gold }]}>
                 {uploading ? (
                   <View style={[styles.avatar, styles.avatarLoading]}>
                     <ActivityIndicator size="large" color={theme.primary} />
                   </View>
                 ) : (
-                  <Image source={{ uri: getAvatarUrl() }} style={styles.avatar} />
+                  <Image source={{ uri: getAvatarUrl() }} style={[
+                    styles.avatar,
+                    hasBadge() && { borderColor: theme.gold }
+                  ]} />
                 )}
               </View>
               <View style={styles.avatarEditBadge}>
                 <Ionicons name="camera" size={14} color="#fff" />
               </View>
             </TouchableOpacity>
+
+            {userBadges.length > 0 && (
+              <View style={styles.badgesRow}>
+                {userBadges.map((badge) => renderBadge(badge, 'large'))}
+              </View>
+            )}
 
             <TouchableOpacity onPress={openUsernameModal} style={styles.usernameContainer}>
               <Text style={styles.displayName}>{getDisplayName()}</Text>
@@ -431,7 +646,13 @@ export default function ProfileScreen({ navigation }: any) {
               </View>
             </TouchableOpacity>
 
-            <Text style={styles.memberSince}>Dreaming since {memberSince()}</Text>
+            <Text style={[styles.memberSince, hasBadge() && { color: theme.gold }]}>
+              {getMemberText()}
+            </Text>
+            
+            {profile?.account_number && profile.account_number <= 50 && (
+              <Text style={styles.accountNumber}>Dreamer #{profile.account_number}</Text>
+            )}
           </View>
 
           {/* Stats */}
@@ -459,6 +680,25 @@ export default function ProfileScreen({ navigation }: any) {
             </View>
           </View>
 
+          {profile?.is_verified_interpreter && (
+            <>
+              <Text style={styles.sectionTitle}>Interpreter Stats</Text>
+              <View style={styles.interpreterCard}>
+                <View style={styles.interpreterStat}>
+                  <Text style={styles.interpreterValue}>{profile.total_interpretations}</Text>
+                  <Text style={styles.interpreterLabel}>Interpretations</Text>
+                </View>
+                <View style={styles.interpreterDivider} />
+                <View style={styles.interpreterStat}>
+                  <Text style={styles.interpreterValue}>
+                    {profile.interpreter_rating?.toFixed(1) || '0.0'}
+                  </Text>
+                  <Text style={styles.interpreterLabel}>Rating</Text>
+                </View>
+              </View>
+            </>
+          )}
+
           {/* Coming Soon */}
           <Text style={styles.sectionTitle}>Coming Soon</Text>
           {[
@@ -484,7 +724,7 @@ export default function ProfileScreen({ navigation }: any) {
         </ScrollView>
       </SafeAreaView>
 
-      {/* Photo Picker Modal */}
+      {/* Photo Picker Modal - Swipeable */}
       <Modal
         visible={showPhotoPicker}
         transparent
@@ -575,7 +815,10 @@ export default function ProfileScreen({ navigation }: any) {
                     <Text style={styles.usernameError}>{usernameError}</Text>
                   </View>
                 ) : (
-                  <Text style={styles.usernameHint}>3-20 characters • Letters, numbers, underscores</Text>
+                  <Text style={styles.usernameHint}>
+                    3-20 characters • Letters, numbers, underscores
+                    {profile?.username && '\n• Can be changed every 14 days'}
+                  </Text>
                 )}
 
                 <View style={styles.modalActions}>
@@ -603,22 +846,73 @@ export default function ProfileScreen({ navigation }: any) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Settings Modal */}
+      {/* Badge Info Modal */}
+      <Modal
+        visible={!!showBadgeInfo}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBadgeInfo(null)}
+      >
+        <Pressable style={styles.badgeModalOverlay} onPress={() => setShowBadgeInfo(null)}>
+          <View style={styles.badgeModalContent}>
+            {showBadgeInfo && BADGES[showBadgeInfo as keyof typeof BADGES] && (
+              <>
+                <Text style={styles.badgeModalIcon}>
+                  {BADGES[showBadgeInfo as keyof typeof BADGES].icon}
+                </Text>
+                <Text style={[
+                  styles.badgeModalTitle,
+                  { color: BADGES[showBadgeInfo as keyof typeof BADGES].color }
+                ]}>
+                  {BADGES[showBadgeInfo as keyof typeof BADGES].label}
+                </Text>
+                <Text style={styles.badgeModalDesc}>
+                  {BADGES[showBadgeInfo as keyof typeof BADGES].description}
+                </Text>
+                <TouchableOpacity
+                  style={styles.badgeModalClose}
+                  onPress={() => setShowBadgeInfo(null)}
+                >
+                  <Text style={styles.badgeModalCloseText}>Got it</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Settings Modal - Swipeable */}
       <Modal
         visible={showSettings}
         transparent
-        animationType="slide"
-        onRequestClose={() => setShowSettings(false)}
+        animationType="none"
+        onRequestClose={closeSettingsModal}
       >
         <View style={styles.settingsModalOverlay}>
-          <SafeAreaView style={styles.settingsModalWrap}>
+          <Animated.View 
+            style={[styles.settingsBackdrop, { opacity: settingsBackdropOpacity }]}
+          >
+            <TouchableOpacity style={StyleSheet.absoluteFill} onPress={closeSettingsModal} />
+          </Animated.View>
+
+          <Animated.View 
+            style={[
+              styles.settingsModalWrap,
+              { transform: [{ translateY: settingsTranslateY }] }
+            ]}
+          >
+            {/* Swipe Handle Area */}
+            <View {...settingsPanResponder.panHandlers} style={styles.settingsHandleArea}>
+              <View style={styles.settingsHandle} />
+            </View>
+
             <LinearGradient colors={AMBIENT_GRADIENTS[0]} style={styles.settingsModalBg}>
               <View style={styles.settingsHeader}>
-                <TouchableOpacity onPress={() => setShowSettings(false)} style={styles.settingsCloseBtn}>
-                  <Ionicons name="chevron-down" size={28} color={theme.textPrimary} />
-                </TouchableOpacity>
-                <Text style={styles.settingsTitle}>Settings</Text>
                 <View style={{ width: 44 }} />
+                <Text style={styles.settingsTitle}>Settings</Text>
+                <TouchableOpacity onPress={closeSettingsModal} style={styles.settingsCloseBtn}>
+                  <Ionicons name="close" size={24} color={theme.textPrimary} />
+                </TouchableOpacity>
               </View>
 
               <ScrollView
@@ -631,8 +925,8 @@ export default function ProfileScreen({ navigation }: any) {
                   <TouchableOpacity
                     style={styles.settingsRow}
                     onPress={() => {
-                      setShowSettings(false);
-                      setTimeout(openUsernameModal, 300);
+                      closeSettingsModal();
+                      setTimeout(openUsernameModal, 350);
                     }}
                   >
                     <View style={styles.settingsIconWrap}>
@@ -642,6 +936,9 @@ export default function ProfileScreen({ navigation }: any) {
                       <Text style={styles.settingsLabel}>Username</Text>
                       <Text style={styles.settingsValue}>
                         {profile?.username ? `@${profile.username}` : 'Not set'}
+                        {profile?.username && !canChangeUsername() && 
+                          ` • Locked for ${daysUntilUsernameChange()}d`
+                        }
                       </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
@@ -670,8 +967,71 @@ export default function ProfileScreen({ navigation }: any) {
                         {profile?.is_public ? 'Public' : 'Private'}
                       </Text>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+                    {togglingVisibility ? (
+                      <ActivityIndicator size="small" color={theme.primary} />
+                    ) : (
+                      <Switch
+                        value={profile?.is_public || false}
+                        onValueChange={toggleProfileVisibility}
+                        trackColor={{ false: theme.glass, true: theme.primary + '60' }}
+                        thumbColor={profile?.is_public ? theme.primary : theme.textMuted}
+                      />
+                    )}
                   </View>
+                </View>
+
+                {userBadges.length > 0 && (
+                  <>
+                    <Text style={styles.settingsSectionTitle}>Your Badges</Text>
+                    <View style={styles.settingsCard}>
+                      {userBadges.map((badgeKey, index) => {
+                        const badge = BADGES[badgeKey as keyof typeof BADGES];
+                        return (
+                          <React.Fragment key={badgeKey}>
+                            {index > 0 && <View style={styles.settingsDivider} />}
+                            <TouchableOpacity
+                              style={styles.settingsRow}
+                              onPress={() => {
+                                closeSettingsModal();
+                                setTimeout(() => setShowBadgeInfo(badgeKey), 350);
+                              }}
+                            >
+                              <View style={[styles.settingsIconWrap, { backgroundColor: badge.color + '20' }]}>
+                                <Text style={{ fontSize: 18 }}>{badge.icon}</Text>
+                              </View>
+                              <View style={styles.settingsTextWrap}>
+                                <Text style={[styles.settingsLabel, { color: badge.color }]}>
+                                  {badge.label}
+                                </Text>
+                                <Text style={styles.settingsValue}>{badge.description}</Text>
+                              </View>
+                            </TouchableOpacity>
+                          </React.Fragment>
+                        );
+                      })}
+                    </View>
+                  </>
+                )}
+
+                {/* Support Section with Feedback */}
+                <Text style={styles.settingsSectionTitle}>Support</Text>
+                <View style={styles.settingsCard}>
+                  <TouchableOpacity
+                    style={styles.settingsRow}
+                    onPress={() => {
+                      closeSettingsModal();
+                      setTimeout(openFeedback, 350);
+                    }}
+                  >
+                    <View style={[styles.settingsIconWrap, { backgroundColor: theme.gold + '20' }]}>
+                      <Ionicons name="chatbubble-ellipses-outline" size={18} color={theme.gold} />
+                    </View>
+                    <View style={styles.settingsTextWrap}>
+                      <Text style={styles.settingsLabel}>Send Feedback</Text>
+                      <Text style={styles.settingsValue}>Or shake your device anytime 📳</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+                  </TouchableOpacity>
                 </View>
 
                 <Text style={styles.settingsSectionTitle}>Preferences</Text>
@@ -694,10 +1054,13 @@ export default function ProfileScreen({ navigation }: any) {
                 <View style={styles.appInfo}>
                   <Text style={styles.appName}>Àlá</Text>
                   <Text style={styles.appVersion}>Version 1.0.0</Text>
+                  {profile?.account_number && (
+                    <Text style={styles.accountNumberSmall}>Account #{profile.account_number}</Text>
+                  )}
                 </View>
               </ScrollView>
             </LinearGradient>
-          </SafeAreaView>
+          </Animated.View>
         </View>
       </Modal>
     </AnimatedGradientBackground>
@@ -764,6 +1127,26 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: theme.background,
   },
+
+  badgesRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  badgeSmall: { paddingHorizontal: 8, paddingVertical: 4 },
+  badgeLarge: { paddingHorizontal: 12, paddingVertical: 6, gap: 6 },
+  badgeIconSmall: { fontSize: 14 },
+  badgeIconLarge: { fontSize: 16 },
+  badgeLabel: { fontSize: 12, fontWeight: '600' },
+
   usernameContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -780,6 +1163,12 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   memberSince: { fontSize: 13, color: theme.textSubtle },
+  accountNumber: { 
+    fontSize: 11, 
+    color: theme.gold, 
+    marginTop: 4,
+    fontWeight: '600',
+  },
 
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 28 },
   statCard: {
@@ -800,6 +1189,20 @@ const styles = StyleSheet.create({
   },
   statValue: { fontSize: 20, fontWeight: '700', color: theme.textPrimary },
   statLabel: { fontSize: 11, color: theme.textSubtle, marginTop: 2 },
+
+  interpreterCard: {
+    flexDirection: 'row',
+    backgroundColor: theme.glass,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 28,
+    borderWidth: 1,
+    borderColor: theme.purple + '30',
+  },
+  interpreterStat: { flex: 1, alignItems: 'center' },
+  interpreterValue: { fontSize: 24, fontWeight: '700', color: theme.purple },
+  interpreterLabel: { fontSize: 12, color: theme.textSubtle, marginTop: 4 },
+  interpreterDivider: { width: 1, backgroundColor: theme.glassBorder, marginHorizontal: 16 },
 
   sectionTitle: {
     fontSize: 13,
@@ -977,7 +1380,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   usernameError: { fontSize: 13, color: theme.danger },
-  usernameHint: { fontSize: 12, color: theme.textMuted, marginTop: 10, marginLeft: 4 },
+  usernameHint: { fontSize: 12, color: theme.textMuted, marginTop: 10, marginLeft: 4, lineHeight: 18 },
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
   modalCancelBtn: {
     flex: 1,
@@ -997,16 +1400,72 @@ const styles = StyleSheet.create({
   modalSaveBtnDisabled: { backgroundColor: theme.glass },
   modalSaveText: { fontSize: 15, fontWeight: '600', color: '#fff' },
 
-  // Settings Modal
-  settingsModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  // Badge Info Modal
+  badgeModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  badgeModalContent: {
+    backgroundColor: 'rgba(15, 20, 35, 0.95)',
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.glassBorder,
+    width: '100%',
+    maxWidth: 300,
+  },
+  badgeModalIcon: { fontSize: 48, marginBottom: 16 },
+  badgeModalTitle: { fontSize: 20, fontWeight: '700', marginBottom: 8 },
+  badgeModalDesc: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  badgeModalClose: {
+    backgroundColor: theme.glass,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  badgeModalCloseText: { fontSize: 15, fontWeight: '600', color: theme.textPrimary },
+
+  // Settings Modal - Swipeable
+  settingsModalOverlay: { flex: 1 },
+  settingsBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
   settingsModalWrap: {
     flex: 1,
-    marginTop: 40,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    marginTop: 60,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     overflow: 'hidden',
   },
-  settingsModalBg: { flex: 1 },
+  settingsHandleArea: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    alignItems: 'center',
+    paddingTop: 10,
+    paddingBottom: 6,
+    backgroundColor: 'transparent',
+  },
+  settingsHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  settingsModalBg: { flex: 1, paddingTop: 20 },
   settingsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1060,4 +1519,5 @@ const styles = StyleSheet.create({
   },
   appName: { fontSize: 28, fontWeight: '700', color: theme.gold },
   appVersion: { fontSize: 12, color: theme.textMuted, marginTop: 4 },
+  accountNumberSmall: { fontSize: 11, color: theme.textMuted, marginTop: 8 },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,8 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Animated,
-  FlatList,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -35,6 +35,28 @@ const AMBIENT_GRADIENTS: readonly [string, string, string][] = [
   ['#0a0f1a', '#121a2e', '#1a2744'],
 ];
 
+// Badge configuration
+const BADGES = {
+  founding_dreamer: {
+    icon: '🌟',
+    label: 'Founding Dreamer',
+    color: theme.gold,
+    description: 'One of the first 50 dreamers',
+  },
+  verified_interpreter: {
+    icon: '🔮',
+    label: 'Verified Interpreter',
+    color: theme.purple,
+    description: 'Highly rated dream interpreter',
+  },
+  verified: {
+    icon: '✓',
+    label: 'Verified',
+    color: theme.primary,
+    description: 'Verified account',
+  },
+};
+
 interface UserProfile {
   id: string;
   username: string | null;
@@ -42,6 +64,12 @@ interface UserProfile {
   avatar_url: string | null;
   bio: string | null;
   is_public: boolean;
+  is_founding_dreamer: boolean;
+  is_verified_interpreter: boolean;
+  is_verified: boolean;
+  interpreter_rating: number;
+  total_interpretations: number;
+  account_number: number | null;
   created_at: string;
 }
 
@@ -61,6 +89,7 @@ export default function ViewProfileScreen({ route, navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [dreamsLoading, setDreamsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showBadgeInfo, setShowBadgeInfo] = useState<string | null>(null);
 
   const isOwnProfile = currentUser?.id === userId;
 
@@ -74,7 +103,7 @@ export default function ViewProfileScreen({ route, navigation }: any) {
       setLoading(true);
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, username, display_name, avatar_url, bio, is_public, created_at')
+        .select('*')
         .eq('id', userId)
         .single();
 
@@ -115,6 +144,20 @@ export default function ViewProfileScreen({ route, navigation }: any) {
     }
   };
 
+  // Check if user has any badge
+  const hasBadge = () => {
+    return profile?.is_founding_dreamer || profile?.is_verified_interpreter || profile?.is_verified;
+  };
+
+  // Get user badges
+  const getUserBadges = () => {
+    const badges: string[] = [];
+    if (profile?.is_founding_dreamer) badges.push('founding_dreamer');
+    if (profile?.is_verified_interpreter) badges.push('verified_interpreter');
+    if (profile?.is_verified) badges.push('verified');
+    return badges;
+  };
+
   const getAvatarUrl = () => {
     if (profile?.avatar_url) return profile.avatar_url;
     const name = profile?.display_name || profile?.username || 'User';
@@ -127,15 +170,44 @@ export default function ViewProfileScreen({ route, navigation }: any) {
     return 'Dreamer';
   };
 
-  const memberSince = () => {
+  // Dynamic member text based on badges
+  const getMemberText = () => {
     if (!profile?.created_at) return '';
     const date = new Date(profile.created_at);
-    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const formattedDate = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    
+    if (hasBadge()) {
+      return `Conscious before ${formattedDate}`;
+    }
+    return `Dreaming since ${formattedDate}`;
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  // Render badge component
+  const renderBadge = (badgeKey: string, size: 'small' | 'large' = 'small') => {
+    const badge = BADGES[badgeKey as keyof typeof BADGES];
+    if (!badge) return null;
+
+    const isSmall = size === 'small';
+    
+    return (
+      <TouchableOpacity
+        key={badgeKey}
+        onPress={() => setShowBadgeInfo(badgeKey)}
+        style={[
+          styles.badge,
+          { backgroundColor: badge.color + '20', borderColor: badge.color + '40' },
+          isSmall ? styles.badgeSmall : styles.badgeLarge,
+        ]}
+      >
+        <Text style={isSmall ? styles.badgeIconSmall : styles.badgeIconLarge}>{badge.icon}</Text>
+        {!isSmall && <Text style={[styles.badgeLabel, { color: badge.color }]}>{badge.label}</Text>}
+      </TouchableOpacity>
+    );
   };
 
   if (loading) {
@@ -171,6 +243,8 @@ export default function ViewProfileScreen({ route, navigation }: any) {
     );
   }
 
+  const userBadges = getUserBadges();
+
   return (
     <LinearGradient colors={AMBIENT_GRADIENTS[0]} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -187,9 +261,25 @@ export default function ViewProfileScreen({ route, navigation }: any) {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {/* Profile Section */}
           <View style={styles.profileSection}>
-            <View style={styles.avatarGlow}>
-              <Image source={{ uri: getAvatarUrl() }} style={styles.avatar} />
+            <View style={[
+              styles.avatarGlow,
+              hasBadge() && { shadowColor: theme.gold }
+            ]}>
+              <Image 
+                source={{ uri: getAvatarUrl() }} 
+                style={[
+                  styles.avatar,
+                  hasBadge() && { borderColor: theme.gold }
+                ]} 
+              />
             </View>
+
+            {/* Badges Row */}
+            {userBadges.length > 0 && (
+              <View style={styles.badgesRow}>
+                {userBadges.map((badge) => renderBadge(badge, 'large'))}
+              </View>
+            )}
 
             <Text style={styles.displayName}>{getDisplayName()}</Text>
             {profile.username && profile.display_name && (
@@ -198,7 +288,16 @@ export default function ViewProfileScreen({ route, navigation }: any) {
 
             {profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
 
-            <Text style={styles.memberSince}>Dreaming since {memberSince()}</Text>
+            <Text style={[
+              styles.memberSince,
+              hasBadge() && { color: theme.gold }
+            ]}>
+              {getMemberText()}
+            </Text>
+            
+            {profile.account_number && profile.account_number <= 50 && (
+              <Text style={styles.accountNumber}>Dreamer #{profile.account_number}</Text>
+            )}
           </View>
 
           {/* Stats */}
@@ -207,6 +306,14 @@ export default function ViewProfileScreen({ route, navigation }: any) {
               <Text style={styles.statValue}>{dreams.length}</Text>
               <Text style={styles.statLabel}>Public Dreams</Text>
             </View>
+            {profile.is_verified_interpreter && (
+              <View style={[styles.statCard, { borderColor: theme.purple + '30' }]}>
+                <Text style={[styles.statValue, { color: theme.purple }]}>
+                  {profile.interpreter_rating?.toFixed(1) || '0.0'}
+                </Text>
+                <Text style={styles.statLabel}>Interpreter Rating</Text>
+              </View>
+            )}
           </View>
 
           {/* Public Dreams */}
@@ -239,6 +346,41 @@ export default function ViewProfileScreen({ route, navigation }: any) {
           )}
         </ScrollView>
       </SafeAreaView>
+
+      {/* Badge Info Modal */}
+      <Modal
+        visible={!!showBadgeInfo}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBadgeInfo(null)}
+      >
+        <Pressable style={styles.badgeModalOverlay} onPress={() => setShowBadgeInfo(null)}>
+          <View style={styles.badgeModalContent}>
+            {showBadgeInfo && BADGES[showBadgeInfo as keyof typeof BADGES] && (
+              <>
+                <Text style={styles.badgeModalIcon}>
+                  {BADGES[showBadgeInfo as keyof typeof BADGES].icon}
+                </Text>
+                <Text style={[
+                  styles.badgeModalTitle,
+                  { color: BADGES[showBadgeInfo as keyof typeof BADGES].color }
+                ]}>
+                  {BADGES[showBadgeInfo as keyof typeof BADGES].label}
+                </Text>
+                <Text style={styles.badgeModalDesc}>
+                  {BADGES[showBadgeInfo as keyof typeof BADGES].description}
+                </Text>
+                <TouchableOpacity
+                  style={styles.badgeModalClose}
+                  onPress={() => setShowBadgeInfo(null)}
+                >
+                  <Text style={styles.badgeModalCloseText}>Got it</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -285,6 +427,41 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: theme.glassBorderLight,
   },
+
+  // Badges
+  badgesRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  badgeSmall: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  badgeLarge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  badgeIconSmall: {
+    fontSize: 14,
+  },
+  badgeIconLarge: {
+    fontSize: 16,
+  },
+  badgeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
   displayName: { fontSize: 22, fontWeight: '700', color: theme.textPrimary, marginBottom: 4 },
   username: { fontSize: 15, color: theme.textSubtle, marginBottom: 12 },
   bio: {
@@ -296,6 +473,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   memberSince: { fontSize: 13, color: theme.textMuted },
+  accountNumber: { 
+    fontSize: 11, 
+    color: theme.gold, 
+    marginTop: 4,
+    fontWeight: '600',
+  },
 
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 28 },
   statCard: {
@@ -342,4 +525,50 @@ const styles = StyleSheet.create({
 
   errorTitle: { fontSize: 18, fontWeight: '600', color: theme.textPrimary, marginTop: 16 },
   errorSubtitle: { fontSize: 14, color: theme.textMuted, marginTop: 4 },
+
+  // Badge Info Modal
+  badgeModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  badgeModalContent: {
+    backgroundColor: 'rgba(15, 20, 35, 0.95)',
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.glassBorder,
+    width: '100%',
+    maxWidth: 300,
+  },
+  badgeModalIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  badgeModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  badgeModalDesc: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  badgeModalClose: {
+    backgroundColor: theme.glass,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  badgeModalCloseText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.textPrimary,
+  },
 });

@@ -8,6 +8,14 @@ import {
   ActivityIndicator,
   Animated,
   RefreshControl,
+  Image,
+  Modal,
+  Pressable,
+  Switch,
+  Alert,
+  PanResponder,
+  Dimensions,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,6 +23,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const SWIPE_THRESHOLD = 80;
 
 const theme = {
   background: '#050a15',
@@ -29,10 +40,9 @@ const theme = {
   textMuted: '#475569',
   danger: '#ef4444',
   purple: '#a78bfa',
-  success: '#10b981',
+  glowGold: 'rgba(212, 175, 55, 0.15)',
 };
 
-// Ambient gradients
 const AMBIENT_GRADIENTS: readonly [string, string, string][] = [
   ['#050a15', '#0a1628', '#0f172a'],
   ['#0a0f1a', '#121a2e', '#1a2744'],
@@ -41,9 +51,50 @@ const AMBIENT_GRADIENTS: readonly [string, string, string][] = [
   ['#0a0d14', '#141e2d', '#1e2e45'],
 ];
 
-const GRADIENT_INTERVAL = 14000;
+interface UserProfile {
+  id: string;
+  username?: string;
+  display_name?: string;
+  avatar_url?: string;
+}
 
-// Animated Background
+interface Notification {
+  id: string;
+  user_id: string;
+  type: string;
+  message: string;
+  dream_id: string | null;
+  actor_id: string | null;
+  read: boolean;
+  created_at: string;
+  actor?: UserProfile;
+}
+
+interface NotificationSettings {
+  likes: boolean;
+  interpretations: boolean;
+  follows: boolean;
+  system: boolean;
+}
+
+interface MuteOption {
+  type: 'user' | 'post';
+  id: string;
+  name: string;
+}
+
+interface MutedUser {
+  id: string;
+  muted_user_id: string;
+  profile?: UserProfile;
+}
+
+interface MutedPost {
+  id: string;
+  dream_id: string;
+  dream?: { title: string | null };
+}
+
 const AnimatedGradientBackground = ({ children }: { children: React.ReactNode }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [nextIndex, setNextIndex] = useState(1);
@@ -53,15 +104,11 @@ const AnimatedGradientBackground = ({ children }: { children: React.ReactNode })
     const interval = setInterval(() => {
       const next = (currentIndex + 1) % AMBIENT_GRADIENTS.length;
       setNextIndex(next);
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 2000,
-        useNativeDriver: true,
-      }).start(() => {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 2000, useNativeDriver: true }).start(() => {
         setCurrentIndex(next);
         fadeAnim.setValue(1);
       });
-    }, GRADIENT_INTERVAL);
+    }, 14000);
     return () => clearInterval(interval);
   }, [currentIndex]);
 
@@ -76,22 +123,293 @@ const AnimatedGradientBackground = ({ children }: { children: React.ReactNode })
   );
 };
 
-interface Notification {
-  id: string;
-  type: 'like' | 'interpretation' | 'system' | 'reminder' | 'welcome';
-  title: string;
-  body: string | null;
-  data: any;
-  read: boolean;
-  created_at: string;
-}
+const SettingsModal = ({
+  visible,
+  onClose,
+  settings,
+  onUpdateSettings,
+  mutedUsers,
+  mutedPosts,
+  onUnmuteUser,
+  onUnmutePost,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  settings: NotificationSettings;
+  onUpdateSettings: (key: keyof NotificationSettings, value: boolean) => void;
+  mutedUsers: MutedUser[];
+  mutedPosts: MutedPost[];
+  onUnmuteUser: (id: string) => void;
+  onUnmutePost: (id: string) => void;
+}) => {
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const [activeTab, setActiveTab] = useState<'settings' | 'muted'>('settings');
 
-const NOTIFICATION_CONFIG: Record<string, { icon: string; color: string }> = {
-  like: { icon: 'heart', color: theme.danger },
-  interpretation: { icon: 'chatbubble', color: theme.gold },
-  system: { icon: 'information-circle', color: theme.primary },
-  reminder: { icon: 'moon', color: theme.purple },
-  welcome: { icon: 'sparkles', color: theme.gold },
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 100, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+    } else {
+      scaleAnim.setValue(0.9);
+      opacityAnim.setValue(0);
+      setActiveTab('settings');
+    }
+  }, [visible]);
+
+  const getAvatarUrl = (profile?: UserProfile) => {
+    if (profile?.avatar_url?.startsWith('http')) return profile.avatar_url;
+    const name = profile?.display_name || profile?.username || 'U';
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1e293b&color=60a5fa&size=64`;
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Animated.View style={[styles.settingsModalContainer, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <View style={styles.settingsModalContent}>
+              <View style={styles.settingsModalHeader}>
+                <Text style={styles.settingsModalTitle}>Settings</Text>
+                <TouchableOpacity onPress={onClose} style={styles.settingsCloseBtn}>
+                  <Ionicons name="close" size={24} color={theme.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.tabRow}>
+                <TouchableOpacity style={[styles.tabBtn, activeTab === 'settings' && styles.tabBtnActive]} onPress={() => setActiveTab('settings')}>
+                  <Text style={[styles.tabBtnText, activeTab === 'settings' && styles.tabBtnTextActive]}>Preferences</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.tabBtn, activeTab === 'muted' && styles.tabBtnActive]} onPress={() => setActiveTab('muted')}>
+                  <Text style={[styles.tabBtnText, activeTab === 'muted' && styles.tabBtnTextActive]}>Muted</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.settingsBody} showsVerticalScrollIndicator={false}>
+                {activeTab === 'settings' ? (
+                  <>
+                    <View style={styles.settingRow}>
+                      <View style={styles.settingIconWrap}><Ionicons name="sparkles" size={20} color={theme.gold} /></View>
+                      <View style={styles.settingInfo}>
+                        <Text style={styles.settingLabel}>Reactions</Text>
+                        <Text style={styles.settingDescription}>When someone reacts to your dreams</Text>
+                      </View>
+                      <Switch value={settings.likes} onValueChange={() => onUpdateSettings('likes', !settings.likes)} trackColor={{ false: theme.glass, true: theme.gold + '60' }} thumbColor={settings.likes ? theme.gold : theme.textMuted} />
+                    </View>
+                    <View style={styles.settingRow}>
+                      <View style={styles.settingIconWrap}><Ionicons name="eye-outline" size={20} color={theme.gold} /></View>
+                      <View style={styles.settingInfo}>
+                        <Text style={styles.settingLabel}>Interpretations</Text>
+                        <Text style={styles.settingDescription}>When someone interprets your dreams</Text>
+                      </View>
+                      <Switch value={settings.interpretations} onValueChange={() => onUpdateSettings('interpretations', !settings.interpretations)} trackColor={{ false: theme.glass, true: theme.gold + '60' }} thumbColor={settings.interpretations ? theme.gold : theme.textMuted} />
+                    </View>
+                    <View style={styles.settingRow}>
+                      <View style={styles.settingIconWrap}><Ionicons name="person-add-outline" size={20} color={theme.gold} /></View>
+                      <View style={styles.settingInfo}>
+                        <Text style={styles.settingLabel}>New Followers</Text>
+                        <Text style={styles.settingDescription}>When someone follows you</Text>
+                      </View>
+                      <Switch value={settings.follows} onValueChange={() => onUpdateSettings('follows', !settings.follows)} trackColor={{ false: theme.glass, true: theme.gold + '60' }} thumbColor={settings.follows ? theme.gold : theme.textMuted} />
+                    </View>
+                    <View style={styles.settingRow}>
+                      <View style={styles.settingIconWrap}><Ionicons name="information-circle-outline" size={20} color={theme.gold} /></View>
+                      <View style={styles.settingInfo}>
+                        <Text style={styles.settingLabel}>System Updates</Text>
+                        <Text style={styles.settingDescription}>Important updates and announcements</Text>
+                      </View>
+                      <Switch value={settings.system} onValueChange={() => onUpdateSettings('system', !settings.system)} trackColor={{ false: theme.glass, true: theme.gold + '60' }} thumbColor={settings.system ? theme.gold : theme.textMuted} />
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.mutedSectionTitle}>Muted Users</Text>
+                    {mutedUsers.length === 0 ? (
+                      <Text style={styles.mutedEmptyText}>No muted users</Text>
+                    ) : (
+                      mutedUsers.map((item) => (
+                        <View key={item.id} style={styles.mutedItem}>
+                          <Image source={{ uri: getAvatarUrl(item.profile) }} style={styles.mutedAvatar} />
+                          <Text style={styles.mutedName}>{item.profile?.display_name || item.profile?.username || 'User'}</Text>
+                          <TouchableOpacity style={styles.unmuteBtn} onPress={() => onUnmuteUser(item.id)}>
+                            <Text style={styles.unmuteBtnText}>Unmute</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))
+                    )}
+                    <Text style={[styles.mutedSectionTitle, { marginTop: 20 }]}>Muted Posts</Text>
+                    {mutedPosts.length === 0 ? (
+                      <Text style={styles.mutedEmptyText}>No muted posts</Text>
+                    ) : (
+                      mutedPosts.map((item) => (
+                        <View key={item.id} style={styles.mutedItem}>
+                          <View style={styles.mutedPostIcon}><Ionicons name="document-text-outline" size={18} color={theme.textSecondary} /></View>
+                          <Text style={styles.mutedName} numberOfLines={1}>{item.dream?.title || 'Untitled Dream'}</Text>
+                          <TouchableOpacity style={styles.unmuteBtn} onPress={() => onUnmutePost(item.id)}>
+                            <Text style={styles.unmuteBtnText}>Unmute</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))
+                    )}
+                  </>
+                )}
+              </ScrollView>
+            </View>
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+};
+
+const MuteOptionsModal = ({
+  visible,
+  onClose,
+  options,
+  onMute,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  options: MuteOption[];
+  onMute: (option: MuteOption) => void;
+}) => {
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 100, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+    } else {
+      scaleAnim.setValue(0.9);
+      opacityAnim.setValue(0);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <Animated.View style={[styles.muteModalContainer, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <View style={styles.muteModalContent}>
+              <Text style={styles.muteModalTitle}>Mute Notifications</Text>
+              {options.map((option, index) => (
+                <TouchableOpacity key={`${option.type}-${option.id}`} style={[styles.muteOption, index === options.length - 1 && styles.muteOptionLast]} onPress={() => onMute(option)} activeOpacity={0.7}>
+                  <Ionicons name={option.type === 'user' ? 'person-outline' : 'document-text-outline'} size={20} color={theme.textSecondary} />
+                  <Text style={styles.muteOptionText}>{option.name}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity style={styles.muteCancelBtn} onPress={onClose} activeOpacity={0.7}>
+                <Text style={styles.muteCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+};
+
+const SwipeableNotificationItem = ({
+  item,
+  onPress,
+  onDelete,
+  onShowMuteOptions,
+}: {
+  item: Notification;
+  onPress: () => void;
+  onDelete: () => void;
+  onShowMuteOptions: () => void;
+}) => {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dy) < 20,
+      onPanResponderGrant: () => {
+        Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true }).start();
+      },
+      onPanResponderMove: (_, gestureState) => {
+        translateX.setValue(Math.max(-120, Math.min(120, gestureState.dx)));
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true }).start();
+        if (gestureState.dx < -SWIPE_THRESHOLD) {
+          Animated.timing(translateX, { toValue: -SCREEN_WIDTH, duration: 200, useNativeDriver: true }).start(() => {
+            setIsDeleting(true);
+            onDelete();
+          });
+        } else if (gestureState.dx > SWIPE_THRESHOLD) {
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+          onShowMuteOptions();
+        } else {
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+    })
+  ).current;
+
+  const getAvatarUrl = (actor: UserProfile | undefined) => {
+    if (actor?.avatar_url?.startsWith('http')) return actor.avatar_url;
+    const name = actor?.display_name || actor?.username || 'U';
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1e293b&color=60a5fa&size=64`;
+  };
+
+  if (isDeleting) return null;
+
+  const deleteOpacity = translateX.interpolate({ inputRange: [-120, -60, 0], outputRange: [1, 0.5, 0], extrapolate: 'clamp' });
+  const muteOpacity = translateX.interpolate({ inputRange: [0, 60, 120], outputRange: [0, 0.5, 1], extrapolate: 'clamp' });
+
+  return (
+    <View style={styles.swipeContainer}>
+      <Animated.View style={[styles.swipeActionLeft, { opacity: muteOpacity }]}>
+        <Ionicons name="notifications-off-outline" size={22} color={theme.textPrimary} />
+        <Text style={styles.swipeActionText}>Mute</Text>
+      </Animated.View>
+      <Animated.View style={[styles.swipeActionRight, { opacity: deleteOpacity }]}>
+        <Ionicons name="trash-outline" size={22} color="#fff" />
+        <Text style={styles.swipeActionTextDanger}>Delete</Text>
+      </Animated.View>
+      <Animated.View style={[styles.notificationCardWrapper, { transform: [{ translateX }, { scale: scaleAnim }] }]} {...panResponder.panHandlers}>
+        <TouchableOpacity style={[styles.notificationCard, !item.read && styles.notificationCardUnread]} onPress={onPress} activeOpacity={0.9}>
+          <Image source={{ uri: getAvatarUrl(item.actor) }} style={styles.actorAvatar} />
+          <View style={styles.notificationContent}>
+            <View style={styles.notificationHeader}>
+              <Text style={styles.notificationMessage} numberOfLines={2}>{item.message}</Text>
+              {!item.read && <View style={styles.unreadDot} />}
+            </View>
+            <Text style={styles.notificationTime}>{formatTime(item.created_at)}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
+  );
+};
+
+const formatTime = (dateString: string) => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
 export default function NotificationScreen({ navigation }: any) {
@@ -99,29 +417,92 @@ export default function NotificationScreen({ navigation }: any) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [muteOptionsVisible, setMuteOptionsVisible] = useState(false);
+  const [currentMuteOptions, setCurrentMuteOptions] = useState<MuteOption[]>([]);
+  const [settings, setSettings] = useState<NotificationSettings>({ likes: true, interpretations: true, follows: true, system: true });
+  const [mutedUsers, setMutedUsers] = useState<MutedUser[]>([]);
+  const [mutedPosts, setMutedPosts] = useState<MutedPost[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       fetchNotifications();
+      fetchSettings();
+      fetchMutedItems();
     }, [user?.id])
   );
 
+  const fetchSettings = async () => {
+    if (!user?.id) return;
+    try {
+      const { data } = await supabase.from('notification_settings').select('*').eq('user_id', user.id).single();
+      if (data) setSettings({ likes: data.likes ?? true, interpretations: data.interpretations ?? true, follows: data.follows ?? true, system: data.system ?? true });
+    } catch (error) {}
+  };
+
+  const updateSettings = async (key: keyof NotificationSettings, value: boolean) => {
+    if (!user?.id) return;
+    const newSettings = { ...settings, [key]: value };
+    setSettings(newSettings);
+    try {
+      await supabase.from('notification_settings').upsert({ user_id: user.id, ...newSettings, updated_at: new Date().toISOString() });
+    } catch (error) {
+      setSettings(settings);
+    }
+  };
+
+  const fetchMutedItems = async () => {
+    if (!user?.id) return;
+    try {
+      const { data: users } = await supabase.from('muted_users').select('id, muted_user_id').eq('user_id', user.id);
+      if (users && users.length > 0) {
+        const userIds = users.map((u) => u.muted_user_id);
+        const { data: profiles } = await supabase.from('profiles').select('id, username, display_name, avatar_url').in('id', userIds);
+        const profilesMap = (profiles || []).reduce((acc, p) => ({ ...acc, [p.id]: p }), {} as Record<string, UserProfile>);
+        setMutedUsers(users.map((u) => ({ ...u, profile: profilesMap[u.muted_user_id] })));
+      } else {
+        setMutedUsers([]);
+      }
+      const { data: posts } = await supabase.from('muted_posts').select('id, dream_id').eq('user_id', user.id);
+      if (posts && posts.length > 0) {
+        const dreamIds = posts.map((p) => p.dream_id);
+        const { data: dreams } = await supabase.from('dreams').select('id, title').in('id', dreamIds);
+        const dreamsMap = (dreams || []).reduce((acc, d) => ({ ...acc, [d.id]: d }), {} as Record<string, { title: string | null }>);
+        setMutedPosts(posts.map((p) => ({ ...p, dream: dreamsMap[p.dream_id] })));
+      } else {
+        setMutedPosts([]);
+      }
+    } catch (error) {}
+  };
+
+  const handleUnmuteUser = async (id: string) => {
+    try {
+      await supabase.from('muted_users').delete().eq('id', id);
+      setMutedUsers((prev) => prev.filter((u) => u.id !== id));
+    } catch (error) {}
+  };
+
+  const handleUnmutePost = async (id: string) => {
+    try {
+      await supabase.from('muted_posts').delete().eq('id', id);
+      setMutedPosts((prev) => prev.filter((p) => p.id !== id));
+    } catch (error) {}
+  };
+
   const fetchNotifications = async () => {
     if (!user?.id) return;
-
     try {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
+      const { data: notifData, error } = await supabase.from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(50);
       if (error) throw error;
-      setNotifications(data || []);
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-    } finally {
+      const actorIds = [...new Set((notifData || []).map((n) => n.actor_id).filter(Boolean))];
+      let actorsMap: Record<string, UserProfile> = {};
+      if (actorIds.length > 0) {
+        const { data: profiles } = await supabase.from('profiles').select('id, username, display_name, avatar_url').in('id', actorIds);
+        if (profiles) actorsMap = profiles.reduce((acc, p) => ({ ...acc, [p.id]: p }), {});
+      }
+      setNotifications((notifData || []).map((n) => ({ ...n, actor: n.actor_id ? actorsMap[n.actor_id] : undefined })));
+    } catch (error) {}
+    finally {
       setLoading(false);
       setRefreshing(false);
     }
@@ -131,9 +512,7 @@ export default function NotificationScreen({ navigation }: any) {
     try {
       await supabase.from('notifications').update({ read: true }).eq('id', id);
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-    } catch (error) {
-      console.error('Error marking as read:', error);
-    }
+    } catch (error) {}
   };
 
   const markAllAsRead = async () => {
@@ -141,313 +520,172 @@ export default function NotificationScreen({ navigation }: any) {
     try {
       await supabase.from('notifications').update({ read: true }).eq('user_id', user.id).eq('read', false);
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    } catch (error) {
-      console.error('Error marking all as read:', error);
-    }
+    } catch (error) {}
   };
 
   const deleteNotification = async (id: string) => {
     try {
       await supabase.from('notifications').delete().eq('id', id);
       setNotifications((prev) => prev.filter((n) => n.id !== id));
+    } catch (error) {}
+  };
+
+  const handleNotificationPress = async (notification: Notification) => {
+    if (!notification.read) await markAsRead(notification.id);
+    if (notification.dream_id) navigation.navigate('DreamDetail', { dreamId: notification.dream_id });
+  };
+
+  const showMuteOptions = (notification: Notification) => {
+    const options: MuteOption[] = [];
+    if (notification.actor_id && notification.actor) {
+      options.push({ type: 'user', id: notification.actor_id, name: `Mute ${notification.actor.display_name || notification.actor.username || 'this user'}` });
+    }
+    if (notification.dream_id) {
+      options.push({ type: 'post', id: notification.dream_id, name: 'Mute notifications from this post' });
+    }
+    if (options.length > 0) {
+      setCurrentMuteOptions(options);
+      setMuteOptionsVisible(true);
+    }
+  };
+
+  const handleMute = async (option: MuteOption) => {
+    if (!user?.id) return;
+    try {
+      if (option.type === 'user') {
+        await supabase.from('muted_users').upsert({ user_id: user.id, muted_user_id: option.id, created_at: new Date().toISOString() });
+      } else {
+        await supabase.from('muted_posts').upsert({ user_id: user.id, dream_id: option.id, created_at: new Date().toISOString() });
+      }
+      setMuteOptionsVisible(false);
+      fetchMutedItems();
+      Alert.alert('Muted', option.type === 'user' ? 'You will no longer receive notifications from this user' : 'You will no longer receive notifications from this post');
     } catch (error) {
-      console.error('Error deleting notification:', error);
+      Alert.alert('Error', 'Failed to mute. Please try again.');
     }
-  };
-
-  const handleNotificationPress = (notification: Notification) => {
-    if (!notification.read) markAsRead(notification.id);
-
-    // Navigate based on notification type
-    if (notification.data?.dream_id) {
-      // Could navigate to dream detail in the future
-      navigation.goBack();
-    }
-  };
-
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const NotificationItem = ({ item }: { item: Notification }) => {
-    const config = NOTIFICATION_CONFIG[item.type] || NOTIFICATION_CONFIG.system;
-    const scaleAnim = useRef(new Animated.Value(1)).current;
-
-    const handlePressIn = () => {
-      Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true }).start();
-    };
-
-    const handlePressOut = () => {
-      Animated.spring(scaleAnim, { toValue: 1, friction: 3, useNativeDriver: true }).start();
-    };
-
-    return (
-      <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-        <TouchableOpacity
-          style={[styles.notificationCard, !item.read && styles.notificationCardUnread]}
-          onPress={() => handleNotificationPress(item)}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-          onLongPress={() => deleteNotification(item.id)}
-          activeOpacity={1}
-        >
-          <View style={[styles.iconWrap, { backgroundColor: config.color + '20' }]}>
-            <Ionicons name={config.icon as any} size={20} color={config.color} />
-          </View>
-
-          <View style={styles.notificationContent}>
-            <View style={styles.notificationHeader}>
-              <Text style={styles.notificationTitle} numberOfLines={1}>
-                {item.title}
-              </Text>
-              {!item.read && <View style={styles.unreadDot} />}
-            </View>
-            {item.body && (
-              <Text style={styles.notificationBody} numberOfLines={2}>
-                {item.body}
-              </Text>
-            )}
-            <Text style={styles.notificationTime}>{formatTime(item.created_at)}</Text>
-          </View>
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  };
-
   const EmptyState = () => (
     <View style={styles.emptyState}>
-      <View style={styles.emptyIconWrap}>
-        <Ionicons name="notifications-outline" size={48} color={theme.textMuted} />
-      </View>
+      <View style={styles.emptyIconWrap}><Ionicons name="notifications-outline" size={48} color={theme.textMuted} /></View>
       <Text style={styles.emptyTitle}>No notifications yet</Text>
-      <Text style={styles.emptySubtitle}>
-        When someone interacts with your dreams, you'll see it here
-      </Text>
+      <Text style={styles.emptySubtitle}>When someone interacts with your dreams, you'll see it here</Text>
     </View>
   );
 
   return (
     <AnimatedGradientBackground>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
             <Ionicons name="arrow-back" size={24} color={theme.textPrimary} />
           </TouchableOpacity>
-
           <Text style={styles.headerTitle}>Notifications</Text>
-
-          {unreadCount > 0 ? (
-            <TouchableOpacity onPress={markAllAsRead} style={styles.headerBtn}>
-              <Ionicons name="checkmark-done" size={22} color={theme.primary} />
+          <View style={styles.headerRight}>
+            {unreadCount > 0 && (
+              <TouchableOpacity onPress={markAllAsRead} style={styles.headerBtnSmall}>
+                <Ionicons name="checkmark-done" size={20} color={theme.primary} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => setSettingsVisible(true)} style={styles.headerBtn}>
+              <Ionicons name="settings-outline" size={22} color={theme.textPrimary} />
             </TouchableOpacity>
-          ) : (
-            <View style={{ width: 44 }} />
-          )}
+          </View>
         </View>
 
-        {/* Unread Badge */}
         {unreadCount > 0 && (
           <View style={styles.unreadBanner}>
-            <Text style={styles.unreadBannerText}>
-              {unreadCount} unread notification{unreadCount > 1 ? 's' : ''}
-            </Text>
+            <Text style={styles.unreadBannerText}>{unreadCount} unread notification{unreadCount > 1 ? 's' : ''}</Text>
           </View>
         )}
 
-        {/* Content */}
         {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={theme.primary} />
-          </View>
+          <View style={styles.loadingContainer}><ActivityIndicator size="large" color={theme.primary} /></View>
         ) : (
           <FlatList
             data={notifications}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <NotificationItem item={item} />}
-            contentContainerStyle={[
-              styles.listContent,
-              notifications.length === 0 && styles.listContentEmpty,
-            ]}
+            renderItem={({ item }) => (
+              <SwipeableNotificationItem item={item} onPress={() => handleNotificationPress(item)} onDelete={() => deleteNotification(item.id)} onShowMuteOptions={() => showMuteOptions(item)} />
+            )}
+            contentContainerStyle={[styles.listContent, notifications.length === 0 && styles.listContentEmpty]}
             ListEmptyComponent={EmptyState}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => {
-                  setRefreshing(true);
-                  fetchNotifications();
-                }}
-                tintColor={theme.primary}
-              />
-            }
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchNotifications(); }} tintColor={theme.primary} />}
             showsVerticalScrollIndicator={false}
           />
         )}
       </SafeAreaView>
+
+      <SettingsModal visible={settingsVisible} onClose={() => setSettingsVisible(false)} settings={settings} onUpdateSettings={updateSettings} mutedUsers={mutedUsers} mutedPosts={mutedPosts} onUnmuteUser={handleUnmuteUser} onUnmutePost={handleUnmutePost} />
+      <MuteOptionsModal visible={muteOptionsVisible} onClose={() => setMuteOptionsVisible(false)} options={currentMuteOptions} onMute={handleMute} />
     </AnimatedGradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  gradientContainer: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-  },
-
-  // Header
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  headerBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: theme.glass,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.textPrimary,
-  },
-
-  // Unread Banner
-  unreadBanner: {
-    marginHorizontal: 16,
-    marginBottom: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    backgroundColor: theme.primary + '15',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: theme.primary + '30',
-  },
-  unreadBannerText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: theme.primary,
-    textAlign: 'center',
-  },
-
-  // Loading
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  // List
-  listContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  listContentEmpty: {
-    flex: 1,
-  },
-
-  // Notification Card
-  notificationCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: theme.glass,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
-  },
-  notificationCardUnread: {
-    backgroundColor: 'rgba(96, 165, 250, 0.08)',
-    borderColor: 'rgba(96, 165, 250, 0.2)',
-  },
-  iconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  notificationContent: {
-    flex: 1,
-  },
-  notificationHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  notificationTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.textPrimary,
-    flex: 1,
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: theme.primary,
-    marginLeft: 8,
-  },
-  notificationBody: {
-    fontSize: 14,
-    color: theme.textSecondary,
-    lineHeight: 20,
-    marginBottom: 6,
-  },
-  notificationTime: {
-    fontSize: 12,
-    color: theme.textMuted,
-  },
-
-  // Empty State
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  emptyIconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: theme.glass,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: theme.textPrimary,
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    color: theme.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
+  gradientContainer: { flex: 1 },
+  safeArea: { flex: 1 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 },
+  headerBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: theme.glass, borderWidth: 1, borderColor: theme.glassBorder, justifyContent: 'center', alignItems: 'center' },
+  headerBtnSmall: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.glass, borderWidth: 1, borderColor: theme.glassBorder, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+  headerTitle: { fontSize: 18, fontWeight: '600', color: theme.textPrimary },
+  headerRight: { flexDirection: 'row', alignItems: 'center' },
+  unreadBanner: { marginHorizontal: 16, marginBottom: 8, paddingVertical: 8, paddingHorizontal: 14, backgroundColor: theme.glowGold, borderRadius: 10, borderWidth: 1, borderColor: theme.gold + '30' },
+  unreadBannerText: { fontSize: 13, fontWeight: '500', color: theme.gold, textAlign: 'center' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  listContent: { padding: 16, paddingBottom: 40 },
+  listContentEmpty: { flex: 1 },
+  swipeContainer: { marginBottom: 10, position: 'relative' },
+  swipeActionLeft: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 100, backgroundColor: theme.purple, borderRadius: 16, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 6 },
+  swipeActionRight: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 100, backgroundColor: theme.danger, borderRadius: 16, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 6 },
+  swipeActionText: { fontSize: 12, fontWeight: '600', color: theme.textPrimary },
+  swipeActionTextDanger: { fontSize: 12, fontWeight: '600', color: '#fff' },
+  notificationCardWrapper: { backgroundColor: 'transparent' },
+  notificationCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.glass, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: theme.glassBorder },
+  notificationCardUnread: { backgroundColor: 'rgba(212, 175, 55, 0.06)', borderColor: 'rgba(212, 175, 55, 0.2)' },
+  actorAvatar: { width: 42, height: 42, borderRadius: 21, marginRight: 12 },
+  notificationContent: { flex: 1 },
+  notificationHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 4 },
+  notificationMessage: { fontSize: 14, fontWeight: '500', color: theme.textPrimary, flex: 1, lineHeight: 20 },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.gold, marginLeft: 8, marginTop: 6 },
+  notificationTime: { fontSize: 12, color: theme.textMuted },
+  emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
+  emptyIconWrap: { width: 80, height: 80, borderRadius: 40, backgroundColor: theme.glass, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  emptyTitle: { fontSize: 18, fontWeight: '600', color: theme.textPrimary, marginBottom: 8 },
+  emptySubtitle: { fontSize: 14, color: theme.textSecondary, textAlign: 'center', lineHeight: 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.75)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  settingsModalContainer: { width: '100%', maxWidth: 360 },
+  settingsModalContent: { backgroundColor: 'rgba(15, 23, 42, 0.98)', borderRadius: 24, borderWidth: 1, borderColor: theme.glassBorderLight, overflow: 'hidden', maxHeight: '80%' },
+  settingsModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: theme.glassBorder },
+  settingsModalTitle: { fontSize: 18, fontWeight: '600', color: theme.textPrimary },
+  settingsCloseBtn: { padding: 4 },
+  tabRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: theme.glassBorder },
+  tabBtn: { flex: 1, paddingVertical: 14, alignItems: 'center' },
+  tabBtnActive: { borderBottomWidth: 2, borderBottomColor: theme.gold },
+  tabBtnText: { fontSize: 14, fontWeight: '600', color: theme.textMuted },
+  tabBtnTextActive: { color: theme.gold },
+  settingsBody: { padding: 16, maxHeight: 400 },
+  settingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.glassBorder },
+  settingIconWrap: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.glowGold, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  settingInfo: { flex: 1, marginRight: 12 },
+  settingLabel: { fontSize: 15, fontWeight: '600', color: theme.textPrimary, marginBottom: 2 },
+  settingDescription: { fontSize: 12, color: theme.textMuted, lineHeight: 16 },
+  mutedSectionTitle: { fontSize: 13, fontWeight: '600', color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 },
+  mutedEmptyText: { fontSize: 14, color: theme.textMuted, textAlign: 'center', paddingVertical: 16 },
+  mutedItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: theme.glassBorder },
+  mutedAvatar: { width: 36, height: 36, borderRadius: 18, marginRight: 12 },
+  mutedPostIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.glass, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  mutedName: { flex: 1, fontSize: 14, fontWeight: '500', color: theme.textPrimary },
+  unmuteBtn: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: theme.glass, borderRadius: 8, borderWidth: 1, borderColor: theme.glassBorder },
+  unmuteBtnText: { fontSize: 12, fontWeight: '600', color: theme.primary },
+  muteModalContainer: { width: '100%', maxWidth: 320 },
+  muteModalContent: { backgroundColor: 'rgba(15, 23, 42, 0.98)', borderRadius: 20, borderWidth: 1, borderColor: theme.glassBorderLight, padding: 20 },
+  muteModalTitle: { fontSize: 17, fontWeight: '600', color: theme.textPrimary, marginBottom: 16, textAlign: 'center' },
+  muteOption: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: theme.glassBorder },
+  muteOptionLast: { borderBottomWidth: 0 },
+  muteOptionText: { fontSize: 15, color: theme.textPrimary, flex: 1 },
+  muteCancelBtn: { marginTop: 16, paddingVertical: 14, backgroundColor: theme.glass, borderRadius: 12, alignItems: 'center' },
+  muteCancelText: { fontSize: 15, fontWeight: '600', color: theme.textSecondary },
 });

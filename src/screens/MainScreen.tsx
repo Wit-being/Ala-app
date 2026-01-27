@@ -66,7 +66,6 @@ const AMBIENT_GRADIENTS: readonly [string, string, string][] = [
 const GRADIENT_INTERVAL = 14000;
 const ICON_SWAP_INTERVAL = 7000;
 
-// Tag emoji mappings
 const TAG_EMOJIS: { [key: string]: string } = {
   sparkles: '✨',
   stars: '🌟',
@@ -82,79 +81,90 @@ const TAG_EMOJIS: { [key: string]: string } = {
   fog: '🌫️',
 };
 
-// Overlay configurations for each tag
-const OVERLAY_CONFIG: {
-  [key: string]: {
-    emoji: string;
-    tintColor: string;
-    secondaryEmoji?: string;
-  };
-} = {
-  // Dream tags
-  sparkles: {
-    emoji: '✨',
-    tintColor: 'rgba(255, 215, 0, 0.04)',
-    secondaryEmoji: '⭐',
-  },
-  stars: {
-    emoji: '🌟',
-    tintColor: 'rgba(255, 223, 100, 0.04)',
-    secondaryEmoji: '✨',
-  },
-  rainbow: {
-    emoji: '🌈',
-    tintColor: 'rgba(255, 150, 200, 0.03)',
-    secondaryEmoji: '☁️',
-  },
-  butterfly: {
-    emoji: '🦋',
-    tintColor: 'rgba(150, 200, 255, 0.04)',
-    secondaryEmoji: '🌸',
-  },
-  cloud: {
-    emoji: '☁️',
-    tintColor: 'rgba(200, 220, 255, 0.05)',
-    secondaryEmoji: '💫',
-  },
-  heart: {
-    emoji: '💖',
-    tintColor: 'rgba(255, 150, 180, 0.04)',
-    secondaryEmoji: '💕',
-  },
-  // Nightmare tags
-  cobweb: {
-    emoji: '🕸️',
-    tintColor: 'rgba(80, 60, 50, 0.06)',
-    secondaryEmoji: '🕷️',
-  },
-  skull: {
-    emoji: '💀',
-    tintColor: 'rgba(60, 60, 70, 0.06)',
-    secondaryEmoji: '🦴',
-  },
-  ghost: {
-    emoji: '👻',
-    tintColor: 'rgba(180, 180, 200, 0.04)',
-    secondaryEmoji: '💨',
-  },
-  moon: {
-    emoji: '🌑',
-    tintColor: 'rgba(30, 30, 50, 0.06)',
-    secondaryEmoji: '🌫️',
-  },
-  eye: {
-    emoji: '👁️',
-    tintColor: 'rgba(100, 50, 80, 0.05)',
-    secondaryEmoji: '👁️‍🗨️',
-  },
-  fog: {
-    emoji: '🌫️',
-    tintColor: 'rgba(150, 150, 170, 0.05)',
-    secondaryEmoji: '💨',
-  },
+const OVERLAY_CONFIG: { [key: string]: { emoji: string; tintColor: string; secondaryEmoji?: string } } = {
+  sparkles: { emoji: '✨', tintColor: 'rgba(255, 215, 0, 0.04)', secondaryEmoji: '⭐' },
+  stars: { emoji: '🌟', tintColor: 'rgba(255, 223, 100, 0.04)', secondaryEmoji: '✨' },
+  rainbow: { emoji: '🌈', tintColor: 'rgba(255, 150, 200, 0.03)', secondaryEmoji: '☁️' },
+  butterfly: { emoji: '🦋', tintColor: 'rgba(150, 200, 255, 0.04)', secondaryEmoji: '🌸' },
+  cloud: { emoji: '☁️', tintColor: 'rgba(200, 220, 255, 0.05)', secondaryEmoji: '💫' },
+  heart: { emoji: '💖', tintColor: 'rgba(255, 150, 180, 0.04)', secondaryEmoji: '💕' },
+  cobweb: { emoji: '🕸️', tintColor: 'rgba(80, 60, 50, 0.06)', secondaryEmoji: '🕷️' },
+  skull: { emoji: '💀', tintColor: 'rgba(60, 60, 70, 0.06)', secondaryEmoji: '🦴' },
+  ghost: { emoji: '👻', tintColor: 'rgba(180, 180, 200, 0.04)', secondaryEmoji: '💨' },
+  moon: { emoji: '🌑', tintColor: 'rgba(30, 30, 50, 0.06)', secondaryEmoji: '🌫️' },
+  eye: { emoji: '👁️', tintColor: 'rgba(100, 50, 80, 0.05)', secondaryEmoji: '👁️‍🗨️' },
+  fog: { emoji: '🌫️', tintColor: 'rgba(150, 150, 170, 0.05)', secondaryEmoji: '💨' },
 };
 
-// Animated Glowing Star Component (for notifications)
+// Glassmorphism Confirm Modal
+const ConfirmModal = ({
+  visible,
+  onClose,
+  onConfirm,
+  title,
+  message,
+  confirmText = 'Confirm',
+  cancelText = 'Cancel',
+  confirmColor = theme.danger,
+  icon = 'trash-outline',
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  confirmColor?: string;
+  icon?: string;
+}) => {
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 100, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+    } else {
+      scaleAnim.setValue(0.9);
+      opacityAnim.setValue(0);
+    }
+  }, [visible, scaleAnim, opacityAnim]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <Pressable style={styles.confirmModalOverlay} onPress={onClose}>
+        <Animated.View style={[styles.confirmModalContainer, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}>
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <View style={styles.confirmModalContent}>
+              <View style={styles.confirmModalGlass}>
+                <View style={[styles.confirmModalIconWrap, { backgroundColor: confirmColor + '20' }]}>
+                  <Ionicons name={icon as any} size={28} color={confirmColor} />
+                </View>
+                <Text style={styles.confirmModalTitle}>{title}</Text>
+                <Text style={styles.confirmModalMessage}>{message}</Text>
+                <View style={styles.confirmModalButtons}>
+                  <TouchableOpacity style={styles.confirmModalCancelBtn} onPress={onClose} activeOpacity={0.7}>
+                    <Text style={styles.confirmModalCancelText}>{cancelText}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.confirmModalConfirmBtn, { backgroundColor: confirmColor }]} onPress={onConfirm} activeOpacity={0.8}>
+                    <Text style={styles.confirmModalConfirmText}>{confirmText}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+};
+
+// Glowing Star for notifications indicator
 const GlowingStar = () => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(0.7)).current;
@@ -164,72 +174,31 @@ const GlowingStar = () => {
     const pulseAnimation = Animated.loop(
       Animated.parallel([
         Animated.sequence([
-          Animated.timing(scaleAnim, {
-            toValue: 1.3,
-            duration: 800,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(scaleAnim, {
-            toValue: 1,
-            duration: 800,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
+          Animated.timing(scaleAnim, { toValue: 1.3, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(scaleAnim, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
         ]),
         Animated.sequence([
-          Animated.timing(opacityAnim, {
-            toValue: 1,
-            duration: 800,
-            useNativeDriver: true,
-          }),
-          Animated.timing(opacityAnim, {
-            toValue: 0.7,
-            duration: 800,
-            useNativeDriver: true,
-          }),
+          Animated.timing(opacityAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+          Animated.timing(opacityAnim, { toValue: 0.7, duration: 800, useNativeDriver: true }),
         ]),
-        Animated.timing(rotateAnim, {
-          toValue: 1,
-          duration: 3000,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
+        Animated.timing(rotateAnim, { toValue: 1, duration: 3000, easing: Easing.linear, useNativeDriver: true }),
       ])
     );
-
     pulseAnimation.start();
     return () => pulseAnimation.stop();
-  }, [opacityAnim, rotateAnim, scaleAnim]);
+  }, []);
 
-  const spin = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
+  const spin = rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
 
   return (
-    <Animated.View
-      style={[
-        styles.glowingStar,
-        {
-          transform: [{ scale: scaleAnim }, { rotate: spin }],
-          opacity: opacityAnim,
-        },
-      ]}
-    >
+    <Animated.View style={[styles.glowingStar, { transform: [{ scale: scaleAnim }, { rotate: spin }], opacity: opacityAnim }]}>
       <Ionicons name="sparkles" size={12} color={theme.gold} />
     </Animated.View>
   );
 };
 
-// Animated Background Component
-const AnimatedGradientBackground = ({
-  children,
-  onGradientChange,
-}: {
-  children: React.ReactNode;
-  onGradientChange?: (index: number) => void;
-}) => {
+// Animated Background
+const AnimatedGradientBackground = ({ children, onGradientChange }: { children: React.ReactNode; onGradientChange?: (index: number) => void }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [nextIndex, setNextIndex] = useState(1);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -238,166 +207,86 @@ const AnimatedGradientBackground = ({
     const interval = setInterval(() => {
       const next = (currentIndex + 1) % AMBIENT_GRADIENTS.length;
       setNextIndex(next);
-
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 2000,
-        useNativeDriver: true,
-      }).start(() => {
+      Animated.timing(fadeAnim, { toValue: 0, duration: 2000, useNativeDriver: true }).start(() => {
         setCurrentIndex(next);
         fadeAnim.setValue(1);
         onGradientChange?.(next);
       });
     }, GRADIENT_INTERVAL);
-
     return () => clearInterval(interval);
-  }, [currentIndex, fadeAnim, onGradientChange]);
+  }, [currentIndex]);
 
   return (
     <View style={styles.gradientContainer}>
-      <LinearGradient
-        colors={AMBIENT_GRADIENTS[nextIndex]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
+      <LinearGradient colors={AMBIENT_GRADIENTS[nextIndex]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: fadeAnim }]}>
-        <LinearGradient
-          colors={AMBIENT_GRADIENTS[currentIndex]}
-          style={StyleSheet.absoluteFill}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
+        <LinearGradient colors={AMBIENT_GRADIENTS[currentIndex]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
       </Animated.View>
       {children}
     </View>
   );
 };
 
-// Tell Button with synced gradient
-const AnimatedTellButton = React.memo(
-  ({ onPress, gradientIndex }: { onPress: () => void; gradientIndex: number }) => {
-    const [showMic, setShowMic] = useState(true);
-    const micOpacity = useRef(new Animated.Value(1)).current;
-    const featherOpacity = useRef(new Animated.Value(0)).current;
-    const scaleAnim = useRef(new Animated.Value(1)).current;
+// Animated Tell Button
+const AnimatedTellButton = React.memo(({ onPress, gradientIndex }: { onPress: () => void; gradientIndex: number }) => {
+  const [showMic, setShowMic] = useState(true);
+  const micOpacity = useRef(new Animated.Value(1)).current;
+  const featherOpacity = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
-    useEffect(() => {
-      const interval = setInterval(() => {
-        if (showMic) {
-          Animated.parallel([
-            Animated.timing(micOpacity, {
-              toValue: 0,
-              duration: 1500,
-              easing: Easing.inOut(Easing.ease),
-              useNativeDriver: true,
-            }),
-            Animated.timing(featherOpacity, {
-              toValue: 1,
-              duration: 1500,
-              easing: Easing.inOut(Easing.ease),
-              useNativeDriver: true,
-            }),
-          ]).start(() => {
-            setShowMic(false);
-          });
-        } else {
-          Animated.parallel([
-            Animated.timing(featherOpacity, {
-              toValue: 0,
-              duration: 1500,
-              easing: Easing.inOut(Easing.ease),
-              useNativeDriver: true,
-            }),
-            Animated.timing(micOpacity, {
-              toValue: 1,
-              duration: 1500,
-              easing: Easing.inOut(Easing.ease),
-              useNativeDriver: true,
-            }),
-          ]).start(() => {
-            setShowMic(true);
-          });
-        }
-      }, ICON_SWAP_INTERVAL);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (showMic) {
+        Animated.parallel([
+          Animated.timing(micOpacity, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(featherOpacity, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        ]).start(() => setShowMic(false));
+      } else {
+        Animated.parallel([
+          Animated.timing(featherOpacity, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(micOpacity, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        ]).start(() => setShowMic(true));
+      }
+    }, ICON_SWAP_INTERVAL);
+    return () => clearInterval(interval);
+  }, [showMic]);
 
-      return () => clearInterval(interval);
-    }, [featherOpacity, micOpacity, showMic]);
+  const handlePressIn = () => Animated.spring(scaleAnim, { toValue: 0.95, useNativeDriver: true }).start();
+  const handlePressOut = () => Animated.spring(scaleAnim, { toValue: 1, friction: 3, useNativeDriver: true }).start();
 
-    const handlePressIn = () => {
-      Animated.spring(scaleAnim, {
-        toValue: 0.95,
-        useNativeDriver: true,
-      }).start();
-    };
+  return (
+    <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} style={styles.navBtn}>
+      <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+        <LinearGradient colors={AMBIENT_GRADIENTS[gradientIndex % AMBIENT_GRADIENTS.length]} style={styles.tellBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+          <View style={styles.tellIconContainer}>
+            <Animated.View style={[styles.tellIconWrap, { opacity: micOpacity }]}>
+              <Ionicons name="mic" size={20} color="#fff" />
+            </Animated.View>
+            <Animated.View style={[styles.tellIconWrap, styles.tellIconAbsolute, { opacity: featherOpacity }]}>
+              <Feather name="feather" size={20} color="#fff" />
+            </Animated.View>
+          </View>
+          <Text style={styles.tellBtnText}>Tell</Text>
+        </LinearGradient>
+      </Animated.View>
+    </Pressable>
+  );
+});
 
-    const handlePressOut = () => {
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        friction: 3,
-        useNativeDriver: true,
-      }).start();
-    };
-
-    const gradientColors = AMBIENT_GRADIENTS[gradientIndex % AMBIENT_GRADIENTS.length];
-
-    return (
-      <Pressable
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        style={styles.navBtn}
-      >
-        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-          <LinearGradient
-            colors={gradientColors}
-            style={styles.tellBtnGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <View style={styles.tellIconContainer}>
-              <Animated.View style={[styles.tellIconWrap, { opacity: micOpacity }]}>
-                <Ionicons name="mic" size={20} color="#fff" />
-              </Animated.View>
-              <Animated.View
-                style={[styles.tellIconWrap, styles.tellIconAbsolute, { opacity: featherOpacity }]}
-              >
-                <Feather name="feather" size={20} color="#fff" />
-              </Animated.View>
-            </View>
-            <Text style={styles.tellBtnText}>Tell</Text>
-          </LinearGradient>
-        </Animated.View>
-      </Pressable>
-    );
-  }
-);
-
-// Animated Eye Icon for Decipher
+// Animated Eye Icon for Decipher (viewers only)
 const AnimatedEyeIcon = React.memo(() => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     const pulseAnimation = Animated.loop(
       Animated.sequence([
-        Animated.timing(scaleAnim, {
-          toValue: 1.05,
-          duration: 1500,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 1,
-          duration: 1500,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
+        Animated.timing(scaleAnim, { toValue: 1.05, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ])
     );
-
     pulseAnimation.start();
     return () => pulseAnimation.stop();
-  }, [scaleAnim]);
+  }, []);
 
   return (
     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
@@ -406,128 +295,84 @@ const AnimatedEyeIcon = React.memo(() => {
   );
 });
 
-// Dream Tag Badge Component (emoji only)
-const DreamTagBadge = ({
-  dreamType,
-  dreamTag,
-}: {
-  dreamType?: string | null;
-  dreamTag?: string | null;
-}) => {
-  if (!dreamType || !dreamTag) return null;
+// Animated "See interpretations" for authors - TEXT ONLY, no icon
+const AnimatedSeeInterpretations = React.memo(({ count, onPress }: { count: number; onPress: () => void }) => {
+  const opacityAnim = useRef(new Animated.Value(1)).current;
 
-  const isDream = dreamType === 'dream';
-  const emoji = TAG_EMOJIS[dreamTag] || (isDream ? '✨' : '🕸️');
+  useEffect(() => {
+    const fadeAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.delay(1400),
+        Animated.timing(opacityAnim, { toValue: 0.15, duration: 500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.delay(700),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+    fadeAnimation.start();
+    return () => fadeAnimation.stop();
+  }, []);
 
   return (
-    <View style={styles.dreamTagBadge} pointerEvents="none">
-      <Text style={styles.dreamTagEmoji}>{emoji}</Text>
-    </View>
+    <TouchableOpacity style={styles.seeInterpretationsBtn} onPress={onPress} activeOpacity={0.7}>
+      <Animated.Text style={[styles.seeInterpretationsText, { opacity: opacityAnim }]}>
+        See interpretations{count > 0 ? ` (${count})` : ''}
+      </Animated.Text>
+    </TouchableOpacity>
   );
-};
+});
 
-// Universal Dream/Nightmare Overlay Component
-const DreamOverlay = ({
-  dreamType,
-  dreamTag,
-}: {
-  dreamType?: string | null;
-  dreamTag?: string | null;
-}) => {
+// Dream Overlay
+const DreamOverlay = ({ dreamType, dreamTag }: { dreamType?: string | null; dreamTag?: string | null }) => {
   if (!dreamType || !dreamTag) return null;
-
   const config = OVERLAY_CONFIG[dreamTag];
   if (!config) return null;
-
   const isNightmare = dreamType === 'nightmare';
 
   return (
     <View style={styles.dreamOverlay} pointerEvents="none">
-      {/* Top right decoration */}
       <View style={styles.overlayTopRight}>
-        <Text style={[styles.overlayEmoji, isNightmare && styles.overlayEmojiNightmare]}>
-          {config.emoji}
-        </Text>
+        <Text style={[styles.overlayEmoji, isNightmare && styles.overlayEmojiNightmare]}>{config.emoji}</Text>
       </View>
-
-      {/* Bottom left decoration */}
       <View style={styles.overlayBottomLeft}>
-        <Text style={[styles.overlayEmojiSmall, isNightmare && styles.overlayEmojiSmallNightmare]}>
-          {config.secondaryEmoji || config.emoji}
-        </Text>
+        <Text style={[styles.overlayEmojiSmall, isNightmare && styles.overlayEmojiSmallNightmare]}>{config.secondaryEmoji || config.emoji}</Text>
       </View>
-
-      {/* Tint overlay */}
       <View style={[styles.tintOverlay, { backgroundColor: config.tintColor }]} />
     </View>
   );
 };
 
 // Coming Soon Modal
-const ComingSoonModal = ({
-  visible,
-  onClose,
-  feature,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  feature: string;
-}) => {
+const ComingSoonModal = ({ visible, onClose, feature }: { visible: boolean; onClose: () => void; feature: string }) => {
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
       Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          friction: 8,
-          tension: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
+        Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 100, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
       ]).start();
     } else {
       scaleAnim.setValue(0.8);
       opacityAnim.setValue(0);
     }
-  }, [opacityAnim, scaleAnim, visible]);
+  }, [visible]);
 
   if (!visible) return null;
 
   return (
     <Modal transparent visible={visible} animationType="none" onRequestClose={onClose}>
       <Pressable style={styles.comingSoonOverlay} onPress={onClose}>
-        <Animated.View
-          style={[
-            styles.comingSoonContent,
-            {
-              opacity: opacityAnim,
-              transform: [{ scale: scaleAnim }],
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]}
-            style={styles.comingSoonGradient}
-          >
+        <Animated.View style={[styles.comingSoonContent, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}>
+          <LinearGradient colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]} style={styles.comingSoonGradient}>
             <View style={styles.comingSoonIconWrap}>
-              <LinearGradient
-                colors={[theme.gold + '40', theme.gold + '10']}
-                style={styles.comingSoonIconBg}
-              >
+              <LinearGradient colors={[theme.gold + '40', theme.gold + '10']} style={styles.comingSoonIconBg}>
                 <Ionicons name="sparkles" size={32} color={theme.gold} />
               </LinearGradient>
             </View>
             <Text style={styles.comingSoonTitle}>Coming Soon</Text>
             <Text style={styles.comingSoonFeature}>{feature}</Text>
-            <Text style={styles.comingSoonDesc}>
-              We&apos;re crafting something special. Stay tuned for updates!
-            </Text>
+            <Text style={styles.comingSoonDesc}>We're crafting something special. Stay tuned!</Text>
             <TouchableOpacity style={styles.comingSoonBtn} onPress={onClose}>
               <LinearGradient colors={[theme.gold, '#b8962e']} style={styles.comingSoonBtnGradient}>
                 <Text style={styles.comingSoonBtnText}>Got it</Text>
@@ -540,76 +385,25 @@ const ComingSoonModal = ({
   );
 };
 
-// Optimized Play Button Component - Instant visual feedback
-const PlayButton = React.memo(
-  ({
-    isPlaying,
-    isLoading,
-    onPress,
-    size = 'medium',
-  }: {
-    isPlaying: boolean;
-    isLoading: boolean;
-    onPress: () => void;
-    size?: 'small' | 'medium' | 'large';
-  }) => {
-    const scaleAnim = useRef(new Animated.Value(1)).current;
+// Play Button
+const PlayButton = React.memo(({ isPlaying, isLoading, onPress, size = 'medium' }: { isPlaying: boolean; isLoading: boolean; onPress: () => void; size?: 'small' | 'medium' | 'large' }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const dimensions = { small: { container: 28, icon: 14 }, medium: { container: 40, icon: 18 }, large: { container: 56, icon: 28 } };
+  const { container, icon } = dimensions[size];
 
-    const dimensions = {
-      small: { container: 28, icon: 14 },
-      medium: { container: 40, icon: 18 },
-      large: { container: 56, icon: 28 },
-    };
-
-    const { container, icon } = dimensions[size];
-
-    const handlePressIn = () => {
-      Animated.spring(scaleAnim, {
-        toValue: 0.85,
-        useNativeDriver: true,
-        speed: 50,
-        bounciness: 4,
-      }).start();
-    };
-
-    const handlePressOut = () => {
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        speed: 50,
-        bounciness: 4,
-      }).start();
-    };
-
-    return (
-      <Pressable
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Animated.View
-          style={[
-            styles.playBtnBase,
-            {
-              width: container,
-              height: container,
-              borderRadius: container / 2,
-              transform: [{ scale: scaleAnim }],
-            },
-            isPlaying && styles.playBtnActive,
-          ]}
-        >
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Ionicons name={isPlaying ? 'pause' : 'play'} size={icon} color="#fff" />
-          )}
-        </Animated.View>
-      </Pressable>
-    );
-  }
-);
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.85, useNativeDriver: true, speed: 50, bounciness: 4 }).start()}
+      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 50, bounciness: 4 }).start()}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    >
+      <Animated.View style={[styles.playBtnBase, { width: container, height: container, borderRadius: container / 2, transform: [{ scale: scaleAnim }] }, isPlaying && styles.playBtnActive]}>
+        {isLoading ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name={isPlaying ? 'pause' : 'play'} size={icon} color="#fff" />}
+      </Animated.View>
+    </Pressable>
+  );
+});
 
 interface Dream {
   id: string;
@@ -661,7 +455,7 @@ interface Interpretation {
 
 type AudioContext = 'feed' | 'journal' | 'modal';
 
-export default function MainScreen({ navigation }: any) {
+export default function MainScreen({ navigation, route }: any) {
   const user = useAuthStore((state) => state.user);
   const [activeTab, setActiveTab] = useState(0);
   const [feedDreams, setFeedDreams] = useState<DreamWithMeta[]>([]);
@@ -687,8 +481,10 @@ export default function MainScreen({ navigation }: any) {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
-
   const [currentGradientIndex, setCurrentGradientIndex] = useState(0);
+
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [dreamToDelete, setDreamToDelete] = useState<string | null>(null);
 
   const pagerRef = useRef<PagerView>(null);
   const currentAudioUrl = useRef<string | null>(null);
@@ -697,16 +493,19 @@ export default function MainScreen({ navigation }: any) {
   const player = useAudioPlayer();
   const status = useAudioPlayerStatus(player);
 
+  useEffect(() => {
+    if (route?.params?.openDreamId) {
+      const dreamId = route.params.openDreamId;
+      const dream = feedDreams.find((d) => d.id === dreamId) || myDreams.find((d) => d.id === dreamId);
+      if (dream) openDreamModal(dream);
+      navigation.setParams({ openDreamId: undefined });
+    }
+  }, [route?.params?.openDreamId, feedDreams, myDreams]);
+
   const fetchUserProfile = async () => {
     if (!user?.id) return;
-
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url, is_public')
-        .eq('id', user.id)
-        .single();
-
+      const { data, error } = await supabase.from('profiles').select('id, username, display_name, avatar_url, is_public').eq('id', user.id).single();
       if (error) throw error;
       setUserProfile(data);
     } catch (error) {
@@ -716,29 +515,16 @@ export default function MainScreen({ navigation }: any) {
 
   const checkNotifications = async () => {
     if (!user?.id) return;
-
     try {
-      const { count, error } = await supabase
-        .from('notifications')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('read', false);
-
-      if (!error) {
-        setHasNotifications((count || 0) > 0);
-      }
+      const { count, error } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('read', false);
+      if (!error) setHasNotifications((count || 0) > 0);
     } catch (error) {
       console.error('Error checking notifications:', error);
     }
   };
 
   const getUserAvatarUrl = () => {
-    if (userProfile?.avatar_url) {
-      if (userProfile.avatar_url.startsWith('http')) {
-        return userProfile.avatar_url;
-      }
-      return userProfile.avatar_url;
-    }
+    if (userProfile?.avatar_url?.startsWith('http')) return userProfile.avatar_url;
     const displayName = userProfile?.display_name || userProfile?.username || user?.email || 'U';
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=1e293b&color=60a5fa&size=128`;
   };
@@ -753,21 +539,17 @@ export default function MainScreen({ navigation }: any) {
         player.pause();
         resetAudioState();
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user?.id])
   );
 
   useEffect(() => {
-    if (status.didJustFinish) {
-      resetAudioState();
-    }
+    if (status.didJustFinish) resetAudioState();
   }, [status.didJustFinish]);
 
   const journalStats = useMemo(() => {
     const now = new Date();
     const thisMonth = now.getMonth();
     const thisYear = now.getFullYear();
-
     const dreamsThisMonth = myDreams.filter((d) => {
       const date = new Date(d.dream_date);
       return date.getMonth() === thisMonth && date.getFullYear() === thisYear;
@@ -775,55 +557,37 @@ export default function MainScreen({ navigation }: any) {
 
     let streak = 0;
     const sortedDates = [...new Set(myDreams.map((d) => d.dream_date.split('T')[0]))].sort().reverse();
-
     if (sortedDates.length > 0) {
       const today = new Date().toISOString().split('T')[0];
       const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-
       if (sortedDates[0] === today || sortedDates[0] === yesterday) {
         streak = 1;
         for (let i = 1; i < sortedDates.length; i++) {
-          const prevDate = new Date(sortedDates[i - 1]);
-          const currDate = new Date(sortedDates[i]);
-          const diffDays = Math.floor((prevDate.getTime() - currDate.getTime()) / 86400000);
-          if (diffDays === 1) {
-            streak++;
-          } else {
-            break;
-          }
+          const diffDays = Math.floor((new Date(sortedDates[i - 1]).getTime() - new Date(sortedDates[i]).getTime()) / 86400000);
+          if (diffDays === 1) streak++;
+          else break;
         }
       }
     }
 
-    const months = [
-      ...new Set(
-        myDreams.map((d) => {
-          const date = new Date(d.dream_date);
-          return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        })
-      ),
-    ]
-      .sort()
-      .reverse();
+    const months = [...new Set(myDreams.map((d) => {
+      const date = new Date(d.dream_date);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }))].sort().reverse();
 
     return { total: myDreams.length, thisMonth: dreamsThisMonth, streak, months };
   }, [myDreams]);
 
   const groupedDreams = useMemo(() => {
     let filtered = myDreams;
-
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (d) => d.title?.toLowerCase().includes(query) || d.content?.toLowerCase().includes(query)
-      );
+      filtered = filtered.filter((d) => d.title?.toLowerCase().includes(query) || d.content?.toLowerCase().includes(query));
     }
-
     if (selectedMonth) {
       filtered = filtered.filter((d) => {
         const date = new Date(d.dream_date);
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        return monthKey === selectedMonth;
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` === selectedMonth;
       });
     }
 
@@ -834,25 +598,17 @@ export default function MainScreen({ navigation }: any) {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const sections: DreamSection[] = [];
-    const todayDreams: DreamWithMeta[] = [];
-    const yesterdayDreams: DreamWithMeta[] = [];
-    const thisWeekDreams: DreamWithMeta[] = [];
-    const thisMonthDreams: DreamWithMeta[] = [];
+    const todayDreams: DreamWithMeta[] = [], yesterdayDreams: DreamWithMeta[] = [], thisWeekDreams: DreamWithMeta[] = [], thisMonthDreams: DreamWithMeta[] = [];
     const olderByMonth: { [key: string]: DreamWithMeta[] } = {};
 
     filtered.forEach((dream) => {
       const dreamDate = new Date(dream.dream_date);
       const dreamDateStr = dreamDate.toDateString();
-
-      if (dreamDateStr === today) {
-        todayDreams.push(dream);
-      } else if (dreamDateStr === yesterday) {
-        yesterdayDreams.push(dream);
-      } else if (dreamDate >= weekAgo) {
-        thisWeekDreams.push(dream);
-      } else if (dreamDate >= monthStart) {
-        thisMonthDreams.push(dream);
-      } else {
+      if (dreamDateStr === today) todayDreams.push(dream);
+      else if (dreamDateStr === yesterday) yesterdayDreams.push(dream);
+      else if (dreamDate >= weekAgo) thisWeekDreams.push(dream);
+      else if (dreamDate >= monthStart) thisMonthDreams.push(dream);
+      else {
         const monthKey = dreamDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
         if (!olderByMonth[monthKey]) olderByMonth[monthKey] = [];
         olderByMonth[monthKey].push(dream);
@@ -863,12 +619,7 @@ export default function MainScreen({ navigation }: any) {
     if (yesterdayDreams.length > 0) sections.push({ title: 'Yesterday', data: yesterdayDreams });
     if (thisWeekDreams.length > 0) sections.push({ title: 'This Week', data: thisWeekDreams });
     if (thisMonthDreams.length > 0) sections.push({ title: 'Earlier This Month', data: thisMonthDreams });
-
-    Object.keys(olderByMonth)
-      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
-      .forEach((month) => {
-        sections.push({ title: month, data: olderByMonth[month] });
-      });
+    Object.keys(olderByMonth).sort((a, b) => new Date(b).getTime() - new Date(a).getTime()).forEach((month) => sections.push({ title: month, data: olderByMonth[month] }));
 
     return sections;
   }, [myDreams, searchQuery, selectedMonth]);
@@ -877,12 +628,9 @@ export default function MainScreen({ navigation }: any) {
     try {
       setFeedLoading(true);
       setFeedError(null);
-
       const { data, error } = await supabase
         .from('dreams')
-        .select(
-          'id, user_id, title, content, audio_url, audio_duration, is_public, dream_date, created_at, status, interpretation_mode, enable_engagement, dream_type, dream_tag'
-        )
+        .select('id, user_id, title, content, audio_url, audio_duration, is_public, dream_date, created_at, status, interpretation_mode, enable_engagement, dream_type, dream_tag')
         .eq('is_public', true)
         .eq('status', 'published')
         .order('created_at', { ascending: false })
@@ -892,43 +640,24 @@ export default function MainScreen({ navigation }: any) {
 
       const dreamsWithMeta = await Promise.all(
         (data || []).map(async (dream) => {
-          let likeCount = 0;
-          let interpretationCount = 0;
-          let isLiked = false;
+          let likeCount = 0, interpretationCount = 0, isLiked = false;
           let authorProfile: UserProfile | null = null;
 
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('id, username, display_name, avatar_url, is_public')
-            .eq('id', dream.user_id)
-            .single();
-
+          const { data: profile } = await supabase.from('profiles').select('id, username, display_name, avatar_url, is_public').eq('id', dream.user_id).single();
           authorProfile = profile;
 
           if (dream.enable_engagement) {
-            const { count: likes } = await supabase
-              .from('dream_likes')
-              .select('*', { count: 'exact', head: true })
-              .eq('dream_id', dream.id);
+            const { count: likes } = await supabase.from('dream_likes').select('*', { count: 'exact', head: true }).eq('dream_id', dream.id);
             likeCount = likes || 0;
-
             if (user?.id) {
-              const { data: userLike } = await supabase
-                .from('dream_likes')
-                .select('id')
-                .eq('dream_id', dream.id)
-                .eq('user_id', user.id)
-                .single();
+              const { data: userLike } = await supabase.from('dream_likes').select('id').eq('dream_id', dream.id).eq('user_id', user.id).single();
               isLiked = !!userLike;
             }
           }
 
           if (dream.interpretation_mode && dream.interpretation_mode !== 'disabled') {
-            const { count: interpretationsCount } = await supabase
-              .from('interpretations')
-              .select('*', { count: 'exact', head: true })
-              .eq('dream_id', dream.id);
-            interpretationCount = interpretationsCount || 0;
+            const { count: ic } = await supabase.from('interpretations').select('*', { count: 'exact', head: true }).eq('dream_id', dream.id);
+            interpretationCount = ic || 0;
           }
 
           return { ...dream, likeCount, interpretationCount, isLiked, authorProfile };
@@ -937,7 +666,6 @@ export default function MainScreen({ navigation }: any) {
 
       setFeedDreams(dreamsWithMeta);
     } catch (error: any) {
-      console.error('Feed error:', error);
       setFeedError(error.message || 'Failed to load dreams');
     } finally {
       setFeedLoading(false);
@@ -946,16 +674,12 @@ export default function MainScreen({ navigation }: any) {
 
   const fetchMyDreams = async () => {
     if (!user) return;
-
     try {
       setMyDreamsLoading(true);
       setMyDreamsError(null);
-
       const { data, error } = await supabase
         .from('dreams')
-        .select(
-          'id, user_id, title, content, audio_url, audio_duration, is_public, dream_date, created_at, status, interpretation_mode, enable_engagement, dream_type, dream_tag'
-        )
+        .select('id, user_id, title, content, audio_url, audio_duration, is_public, dream_date, created_at, status, interpretation_mode, enable_engagement, dream_type, dream_tag')
         .eq('user_id', user.id)
         .order('dream_date', { ascending: false })
         .limit(100);
@@ -963,7 +687,6 @@ export default function MainScreen({ navigation }: any) {
       if (error) throw error;
       setMyDreams(data || []);
     } catch (error: any) {
-      console.error('My dreams error:', error);
       setMyDreamsError(error.message || 'Failed to load your dreams');
     } finally {
       setMyDreamsLoading(false);
@@ -973,28 +696,18 @@ export default function MainScreen({ navigation }: any) {
   const fetchInterpretations = async (dreamId: string) => {
     setInterpretationsLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('interpretations')
-        .select('id, dream_id, user_id, content, created_at, parent_id')
-        .eq('dream_id', dreamId)
-        .order('created_at', { ascending: true });
-
+      const { data, error } = await supabase.from('interpretations').select('id, dream_id, user_id, content, created_at, parent_id').eq('dream_id', dreamId).order('created_at', { ascending: true });
       if (error) throw error;
 
       const withAuthors = await Promise.all(
         (data || []).map(async (interp) => {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('id, username, display_name, avatar_url, is_public')
-            .eq('id', interp.user_id)
-            .single();
+          const { data: profile } = await supabase.from('profiles').select('id, username, display_name, avatar_url, is_public').eq('id', interp.user_id).single();
           return { ...interp, author: profile ?? undefined };
         })
       );
 
       const rootInterpretations: Interpretation[] = [];
       const repliesMap: { [key: string]: Interpretation[] } = {};
-
       withAuthors.forEach((interp) => {
         if (interp.parent_id) {
           if (!repliesMap[interp.parent_id]) repliesMap[interp.parent_id] = [];
@@ -1003,11 +716,7 @@ export default function MainScreen({ navigation }: any) {
           rootInterpretations.push({ ...interp, replies: [] });
         }
       });
-
-      rootInterpretations.forEach((interp) => {
-        interp.replies = repliesMap[interp.id] || [];
-      });
-
+      rootInterpretations.forEach((interp) => (interp.replies = repliesMap[interp.id] || []));
       setInterpretations(rootInterpretations);
     } catch (error) {
       console.error('Error fetching interpretations:', error);
@@ -1016,38 +725,35 @@ export default function MainScreen({ navigation }: any) {
     }
   };
 
+  const createNotification = async (recipientId: string, type: string, dreamId: string, dreamTitle: string | null) => {
+    if (!user?.id || recipientId === user.id) return;
+    try {
+      const displayName = userProfile?.display_name || userProfile?.username || 'Someone';
+      let message = '';
+      if (type === 'like') message = `${displayName} reacted to your dream${dreamTitle ? ` "${dreamTitle}"` : ''}`;
+      else if (type === 'interpretation') message = `${displayName} interpreted your dream${dreamTitle ? ` "${dreamTitle}"` : ''}`;
+      else message = `${displayName} interacted with your dream`;
+
+      await supabase.from('notifications').insert({ user_id: recipientId, type, message, dream_id: dreamId, actor_id: user.id, read: false });
+    } catch (error) {
+      console.error('Error creating notification:', error);
+    }
+  };
+
   const toggleLike = async (dream: DreamWithMeta) => {
     if (!user?.id || !dream.enable_engagement) return;
-
     try {
       if (dream.isLiked) {
         await supabase.from('dream_likes').delete().eq('dream_id', dream.id).eq('user_id', user.id);
-
-        setFeedDreams((prev) =>
-          prev.map((d) =>
-            d.id === dream.id ? { ...d, isLiked: false, likeCount: (d.likeCount || 1) - 1 } : d
-          )
-        );
+        setFeedDreams((prev) => prev.map((d) => (d.id === dream.id ? { ...d, isLiked: false, likeCount: (d.likeCount || 1) - 1 } : d)));
       } else {
         await supabase.from('dream_likes').insert({ dream_id: dream.id, user_id: user.id });
-
-        setFeedDreams((prev) =>
-          prev.map((d) =>
-            d.id === dream.id ? { ...d, isLiked: true, likeCount: (d.likeCount || 0) + 1 } : d
-          )
-        );
+        if (dream.user_id !== user.id) await createNotification(dream.user_id, 'like', dream.id, dream.title);
+        setFeedDreams((prev) => prev.map((d) => (d.id === dream.id ? { ...d, isLiked: true, likeCount: (d.likeCount || 0) + 1 } : d)));
       }
 
       if (selectedDream?.id === dream.id) {
-        setSelectedDream((prev) =>
-          prev
-            ? {
-                ...prev,
-                isLiked: !prev.isLiked,
-                likeCount: prev.isLiked ? (prev.likeCount || 1) - 1 : (prev.likeCount || 0) + 1,
-              }
-            : null
-        );
+        setSelectedDream((prev) => (prev ? { ...prev, isLiked: !prev.isLiked, likeCount: prev.isLiked ? (prev.likeCount || 1) - 1 : (prev.likeCount || 0) + 1 } : null));
       }
     } catch (error) {
       console.error('Error toggling like:', error);
@@ -1062,102 +768,72 @@ export default function MainScreen({ navigation }: any) {
     pendingPlayRef.current = null;
   };
 
-  // Optimized audio playback - immediate visual feedback
-  const playAudio = useCallback(
-    async (dream: Dream, context: AudioContext) => {
-      if (!dream.audio_url) return;
+  const playAudio = useCallback(async (dream: Dream, context: AudioContext) => {
+    if (!dream.audio_url) return;
+    if (playingId === dream.id && playingContext === context) {
+      if (status.playing) player.pause();
+      else player.play();
+      return;
+    }
 
-      // If same dream in same context, just toggle play/pause
-      if (playingId === dream.id && playingContext === context) {
-        if (status.playing) {
-          player.pause();
-        } else {
-          player.play();
-        }
-        return;
+    setIsAudioLoading(dream.id);
+    pendingPlayRef.current = { dreamId: dream.id, context };
+    if (playingId) player.pause();
+    setPlayingId(dream.id);
+    setPlayingContext(context);
+
+    try {
+      let audioUrl = dream.audio_url;
+      if (!dream.is_public && dream.user_id === user?.id && !dream.audio_url.startsWith('http')) {
+        const { data, error } = await supabase.storage.from('ala-audio-private').createSignedUrl(dream.audio_url, 3600);
+        if (error) throw error;
+        if (data?.signedUrl) audioUrl = data.signedUrl;
       }
+      if (pendingPlayRef.current?.dreamId === dream.id) {
+        await player.replace({ uri: audioUrl });
+        currentAudioUrl.current = audioUrl;
+        await player.play();
+      }
+    } catch (error: any) {
+      Alert.alert('Playback Error', 'Unable to play this audio');
+      resetAudioState();
+    } finally {
+      if (pendingPlayRef.current?.dreamId === dream.id) {
+        setIsAudioLoading(null);
+        pendingPlayRef.current = null;
+      }
+    }
+  }, [playingId, playingContext, status.playing, player, user?.id]);
 
-      // Immediately show loading state for instant feedback
-      setIsAudioLoading(dream.id);
-      pendingPlayRef.current = { dreamId: dream.id, context };
+  const showDeleteConfirmation = (dreamId: string) => {
+    setDreamToDelete(dreamId);
+    setDeleteModalVisible(true);
+  };
 
-      // Stop current audio if playing
-      if (playingId) {
+  const confirmDeleteDream = async () => {
+    if (!dreamToDelete) return;
+    try {
+      const { error } = await supabase.from('dreams').delete().eq('id', dreamToDelete);
+      if (error) throw error;
+      setMyDreams((prev) => prev.filter((d) => d.id !== dreamToDelete));
+      if (playingId === dreamToDelete) {
         player.pause();
-      }
-
-      // Update state immediately for visual feedback
-      setPlayingId(dream.id);
-      setPlayingContext(context);
-
-      // Do the heavy work asynchronously
-      try {
-        let audioUrl = dream.audio_url;
-
-        if (!dream.is_public && dream.user_id === user?.id && !dream.audio_url.startsWith('http')) {
-          const { data, error } = await supabase.storage
-            .from('ala-audio-private')
-            .createSignedUrl(dream.audio_url, 3600);
-
-          if (error) throw error;
-          if (data?.signedUrl) audioUrl = data.signedUrl;
-        }
-
-        // Check if user hasn't switched to another audio
-        if (pendingPlayRef.current?.dreamId === dream.id) {
-          await player.replace({ uri: audioUrl });
-          currentAudioUrl.current = audioUrl;
-          await player.play();
-        }
-      } catch (error: any) {
-        console.error('Audio playback error:', error);
-        Alert.alert('Playback Error', 'Unable to play this audio');
         resetAudioState();
-      } finally {
-        if (pendingPlayRef.current?.dreamId === dream.id) {
-          setIsAudioLoading(null);
-          pendingPlayRef.current = null;
-        }
       }
-    },
-    [playingId, playingContext, status.playing, player, user?.id]
-  );
-
-  const deleteDream = async (dreamId: string) => {
-    Alert.alert('Delete Dream', 'Are you sure you want to delete this dream?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const { error } = await supabase.from('dreams').delete().eq('id', dreamId);
-            if (error) throw error;
-
-            setMyDreams((prev) => prev.filter((d) => d.id !== dreamId));
-            if (playingId === dreamId) {
-              player.pause();
-              resetAudioState();
-            }
-            setModalVisible(false);
-            setSelectedDream(null);
-          } catch (error) {
-            console.error('Delete error:', error);
-            Alert.alert('Error', 'Failed to delete dream');
-          }
-        },
-      },
-    ]);
+      setModalVisible(false);
+      setSelectedDream(null);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to delete dream');
+    } finally {
+      setDeleteModalVisible(false);
+      setDreamToDelete(null);
+    }
   };
 
   const openDreamModal = useCallback((dream: DreamWithMeta) => {
     setSelectedDream(dream);
-    if (dream.interpretation_mode && dream.interpretation_mode !== 'disabled') {
-      fetchInterpretations(dream.id);
-    }
-    requestAnimationFrame(() => {
-      setModalVisible(true);
-    });
+    if (dream.interpretation_mode && dream.interpretation_mode !== 'disabled') fetchInterpretations(dream.id);
+    requestAnimationFrame(() => setModalVisible(true));
   }, []);
 
   const closeDreamModal = useCallback(() => {
@@ -1183,143 +859,66 @@ export default function MainScreen({ navigation }: any) {
 
   const formatDuration = (seconds: number | null | undefined) => {
     if (!seconds || isNaN(seconds) || seconds < 0) return '0:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${Math.floor(seconds / 60)}:${(seconds % 60).toString().padStart(2, '0')}`;
   };
 
   const formatDurationMs = (ms: number) => {
     if (!ms || isNaN(ms) || ms < 0) return '0:00';
     const totalSeconds = Math.floor(ms / 1000);
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${Math.floor(totalSeconds / 60)}:${(totalSeconds % 60).toString().padStart(2, '0')}`;
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
+  const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const formatTime = (dateString: string) => new Date(dateString).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const formatFullDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const formatJournalDate = (dateString: string) => new Date(dateString).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  };
+  const onPageSelected = (e: any) => setActiveTab(e.nativeEvent.position);
+  const switchTab = (index: number) => pagerRef.current?.setPage(index);
+  const handleCirclesPress = () => showComingSoon('Dream Circles');
 
-  const formatFullDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  };
-
-  const formatJournalDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  };
-
-  const onPageSelected = (e: any) => {
-    setActiveTab(e.nativeEvent.position);
-  };
-
-  const switchTab = (index: number) => {
-    pagerRef.current?.setPage(index);
-  };
-
-  const handleCirclesPress = () => {
-    showComingSoon('Dream Circles');
-  };
-
-  const isPlayingInContext = useCallback(
-    (dreamId: string, context: AudioContext) => {
-      return playingId === dreamId && playingContext === context && status.playing;
-    },
-    [playingId, playingContext, status.playing]
-  );
-
-  const isThisDreamInContext = useCallback(
-    (dreamId: string, context: AudioContext) => {
-      return playingId === dreamId && playingContext === context;
-    },
-    [playingId, playingContext]
-  );
+  const isPlayingInContext = useCallback((dreamId: string, context: AudioContext) => playingId === dreamId && playingContext === context && status.playing, [playingId, playingContext, status.playing]);
+  const isThisDreamInContext = useCallback((dreamId: string, context: AudioContext) => playingId === dreamId && playingContext === context, [playingId, playingContext]);
 
   const getAvatarUrl = (profile: UserProfile | null, fallbackName: string) => {
-    if (profile?.avatar_url && profile.avatar_url.startsWith('http')) {
-      return profile.avatar_url;
-    }
-    const name = profile?.display_name || profile?.username || fallbackName;
-    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1e293b&color=60a5fa&size=64`;
+    if (profile?.avatar_url?.startsWith('http')) return profile.avatar_url;
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.display_name || profile?.username || fallbackName)}&background=1e293b&color=60a5fa&size=64`;
   };
 
-  // Reaction Buttons Component
-  const ReactionButtons = ({
-    isLiked,
-    count,
-    onStarPress,
-    onWowPress,
-    disabled,
-  }: {
-    isLiked: boolean;
-    count: number;
-    onStarPress: () => void;
-    onWowPress: () => void;
-    disabled?: boolean;
-  }) => {
+  const ReactionButtons = ({ isLiked, count, onStarPress, onWowPress, disabled }: { isLiked: boolean; count: number; onStarPress: () => void; onWowPress: () => void; disabled?: boolean }) => {
     const starScaleAnim = useRef(new Animated.Value(1)).current;
     const wowScaleAnim = useRef(new Animated.Value(1)).current;
-
-    const handleStarPress = () => {
-      if (disabled) return;
-      Animated.sequence([
-        Animated.timing(starScaleAnim, {
-          toValue: 1.4,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(starScaleAnim, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-      ]).start();
-      onStarPress();
-    };
-
-    const handleWowPress = () => {
-      if (disabled) return;
-      Animated.sequence([
-        Animated.timing(wowScaleAnim, {
-          toValue: 1.4,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(wowScaleAnim, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-      ]).start();
-      onWowPress();
-    };
 
     return (
       <View style={styles.reactionRow}>
         <TouchableOpacity
           style={styles.reactionBtn}
-          onPress={handleStarPress}
+          onPress={() => {
+            if (disabled) return;
+            Animated.sequence([
+              Animated.timing(starScaleAnim, { toValue: 1.4, duration: 100, useNativeDriver: true }),
+              Animated.timing(starScaleAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
+            ]).start();
+            onStarPress();
+          }}
           activeOpacity={0.7}
           disabled={disabled}
         >
           <Animated.View style={{ transform: [{ scale: starScaleAnim }] }}>
             <Text style={[styles.reactionEmoji, isLiked && styles.reactionEmojiActive]}>💫</Text>
           </Animated.View>
-          {count > 0 && (
-            <Text style={[styles.reactionCount, isLiked && styles.reactionCountActive]}>{count}</Text>
-          )}
+          {count > 0 && <Text style={[styles.reactionCount, isLiked && styles.reactionCountActive]}>{count}</Text>}
         </TouchableOpacity>
-
         <TouchableOpacity
           style={styles.reactionBtn}
-          onPress={handleWowPress}
+          onPress={() => {
+            if (disabled) return;
+            Animated.sequence([
+              Animated.timing(wowScaleAnim, { toValue: 1.4, duration: 100, useNativeDriver: true }),
+              Animated.timing(wowScaleAnim, { toValue: 1, duration: 100, useNativeDriver: true }),
+            ]).start();
+            onWowPress();
+          }}
           activeOpacity={0.7}
           disabled={disabled}
         >
@@ -1331,272 +930,158 @@ export default function MainScreen({ navigation }: any) {
     );
   };
 
-  // Feed Dream Card
-  const FeedDreamCard = React.memo(
-    ({ item, onPress }: { item: DreamWithMeta; onPress: () => void }) => {
-      const isPlaying = isPlayingInContext(item.id, 'feed');
-      const isThisPlaying = isThisDreamInContext(item.id, 'feed');
-      const isLoading = isAudioLoading === item.id;
-      const isMine = item.user_id === user?.id;
-      const hasAudio = !!item.audio_url;
-      const hasContent = !!item.content;
-      const hasOverlay = item.dream_type && item.dream_tag;
+  const FeedDreamCard = React.memo(({ item, onPress }: { item: DreamWithMeta; onPress: () => void }) => {
+    const isPlaying = isPlayingInContext(item.id, 'feed');
+    const isThisPlaying = isThisDreamInContext(item.id, 'feed');
+    const isLoading = isAudioLoading === item.id;
+    const isMine = item.user_id === user?.id;
+    const hasAudio = !!item.audio_url;
+    const hasContent = !!item.content;
+    const hasOverlay = item.dream_type && item.dream_tag;
+    const userName = isMine ? 'You' : item.authorProfile?.display_name || item.authorProfile?.username || 'Dreamer';
+    const avatarUrl = getAvatarUrl(item.authorProfile || null, userName);
+    const progressPercent = isThisPlaying && status.duration > 0 ? Math.min(100, (status.currentTime / status.duration) * 100) : 0;
+    const canInterpret = item.interpretation_mode && item.interpretation_mode !== 'disabled';
 
-      const userName =
-        isMine ? 'You' : item.authorProfile?.display_name || item.authorProfile?.username || 'Dreamer';
-      const avatarUrl = getAvatarUrl(item.authorProfile || null, userName);
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+    const borderOpacity = useRef(new Animated.Value(0)).current;
 
-      const progressPercent =
-        isThisPlaying && status.duration > 0
-          ? Math.min(100, (status.currentTime / status.duration) * 100)
-          : 0;
+    return (
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => {
+          Animated.parallel([
+            Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true }),
+            Animated.timing(borderOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+          ]).start();
+        }}
+        onPressOut={() => {
+          Animated.parallel([
+            Animated.spring(scaleAnim, { toValue: 1, friction: 3, useNativeDriver: true }),
+            Animated.timing(borderOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+          ]).start();
+        }}
+      >
+        <Animated.View style={[styles.feedCardTransparent, { transform: [{ scale: scaleAnim }] }]}>
+          <Animated.View style={[styles.feedCardBorder, { opacity: borderOpacity }]} />
+          {hasOverlay && <DreamOverlay dreamType={item.dream_type} dreamTag={item.dream_tag} />}
 
-      const scaleAnim = useRef(new Animated.Value(1)).current;
-      const borderOpacity = useRef(new Animated.Value(0)).current;
+          <View style={styles.feedCardContent}>
+            <View style={styles.feedCardHeader}>
+              <TouchableOpacity style={styles.userRow} onPress={() => navigateToProfile(item.authorProfile || null, item.user_id)} activeOpacity={0.7}>
+                <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+                <View>
+                  <Text style={styles.userName}>{userName}</Text>
+                  <Text style={styles.dateText}>{formatDate(item.dream_date)}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
 
-      const handlePressIn = () => {
-        Animated.parallel([
-          Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true }),
-          Animated.timing(borderOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
-        ]).start();
-      };
+            <View style={styles.cardBody}>
+              {item.title && <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>}
+              {hasContent && <Text style={styles.cardExcerpt} numberOfLines={2}>{item.content}</Text>}
+              {!hasContent && !hasAudio && <Text style={styles.cardExcerptMuted}>No content yet</Text>}
+            </View>
 
-      const handlePressOut = () => {
-        Animated.parallel([
-          Animated.spring(scaleAnim, { toValue: 1, friction: 3, useNativeDriver: true }),
-          Animated.timing(borderOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
-        ]).start();
-      };
-
-      const canInterpret = item.interpretation_mode && item.interpretation_mode !== 'disabled';
-
-      return (
-        <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
-          <Animated.View style={[styles.feedCardTransparent, { transform: [{ scale: scaleAnim }] }]}>
-            <Animated.View style={[styles.feedCardBorder, { opacity: borderOpacity }]} />
-
-            {/* Dream/Nightmare Overlay */}
-            {hasOverlay && <DreamOverlay dreamType={item.dream_type} dreamTag={item.dream_tag} />}
-
-            {/* Dream Tag Badge (emoji only) */}
-            {item.dream_type && item.dream_tag && (
-              <DreamTagBadge dreamType={item.dream_type} dreamTag={item.dream_tag} />
+            {hasAudio && (
+              <View style={styles.audioPlayerTransparent}>
+                <PlayButton isPlaying={isPlaying} isLoading={isLoading} onPress={() => playAudio(item, 'feed')} size="medium" />
+                <View style={styles.progressWrap}>
+                  <View style={styles.progressTrackTransparent}>
+                    <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                  </View>
+                </View>
+                <Text style={styles.durationText}>{isThisPlaying ? formatDurationMs(status.currentTime) : formatDuration(item.audio_duration)}</Text>
+              </View>
             )}
 
-            <View style={styles.feedCardContent}>
-              <View style={styles.feedCardHeader}>
-                <TouchableOpacity
-                  style={styles.userRow}
-                  onPress={() => navigateToProfile(item.authorProfile || null, item.user_id)}
-                  activeOpacity={0.7}
-                >
-                  <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-                  <View>
-                    <Text style={styles.userName}>{userName}</Text>
-                    <Text style={styles.dateText}>{formatDate(item.dream_date)}</Text>
+            <View style={styles.cardFooterTransparent}>
+              <View style={styles.engagementLeft}>
+                {item.enable_engagement && <ReactionButtons isLiked={item.isLiked || false} count={item.likeCount || 0} onStarPress={() => toggleLike(item)} onWowPress={() => showComingSoon('Wow Reactions')} />}
+                {(item.interpretationCount ?? 0) > 0 && (
+                  <View style={styles.threadIndicator}>
+                    <Ionicons name="chatbubbles-outline" size={14} color={theme.textSubtle} />
+                    <Text style={styles.threadCount}>{item.interpretationCount}</Text>
                   </View>
-                </TouchableOpacity>
+                )}
               </View>
 
-              <View style={styles.cardBody}>
-                {item.title && (
-                  <Text style={styles.cardTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                )}
-                {hasContent && (
-                  <Text style={styles.cardExcerpt} numberOfLines={2}>
-                    {item.content}
-                  </Text>
-                )}
-                {!hasContent && !hasAudio && <Text style={styles.cardExcerptMuted}>No content yet</Text>}
-              </View>
-
-              {hasAudio && (
-                <View style={styles.audioPlayerTransparent}>
-                  <PlayButton
-                    isPlaying={isPlaying}
-                    isLoading={isLoading}
-                    onPress={() => playAudio(item, 'feed')}
-                    size="medium"
-                  />
-                  <View style={styles.progressWrap}>
-                    <View style={styles.progressTrackTransparent}>
-                      <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
-                    </View>
-                  </View>
-                  <Text style={styles.durationText}>
-                    {isThisPlaying ? formatDurationMs(status.currentTime) : formatDuration(item.audio_duration)}
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.cardFooterTransparent}>
-                <View style={styles.engagementLeft}>
-                  {item.enable_engagement && (
-                    <ReactionButtons
-                      isLiked={item.isLiked || false}
-                      count={item.likeCount || 0}
-                      onStarPress={() => toggleLike(item)}
-                      onWowPress={() => showComingSoon('Wow Reactions')}
-                    />
-                  )}
-
-                  {(item.interpretationCount ?? 0) > 0 && (
-                    <View style={styles.threadIndicator}>
-                      <Ionicons name="chatbubbles-outline" size={14} color={theme.textSubtle} />
-                      <Text style={styles.threadCount}>{item.interpretationCount}</Text>
-                    </View>
-                  )}
-                </View>
-
-                {canInterpret && (
+              {canInterpret && (
+                isMine ? (
+                  <AnimatedSeeInterpretations count={item.interpretationCount || 0} onPress={onPress} />
+                ) : (
                   <TouchableOpacity style={styles.decipherBtn} onPress={onPress} activeOpacity={0.7}>
                     <AnimatedEyeIcon />
                     <Text style={styles.decipherText}>Decipher</Text>
                   </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          </Animated.View>
-        </Pressable>
-      );
-    }
-  );
-
-  // Journal Entry Card
-  const JournalEntryCard = React.memo(
-    ({ item, onPress }: { item: DreamWithMeta; onPress: () => void }) => {
-      const isPlaying = isPlayingInContext(item.id, 'journal');
-      const isThisPlaying = isThisDreamInContext(item.id, 'journal');
-      const isLoading = isAudioLoading === item.id;
-      const hasAudio = !!item.audio_url;
-      const hasContent = !!item.content;
-
-      const progressPercent =
-        isThisPlaying && status.duration > 0
-          ? Math.min(100, (status.currentTime / status.duration) * 100)
-          : 0;
-
-      return (
-        <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-          <View style={[styles.journalCard, isPlaying && styles.journalCardActive]}>
-            <View style={styles.journalTimeCol}>
-              <Text style={styles.journalDateLabel}>{formatJournalDate(item.dream_date)}</Text>
-              <Text style={styles.journalTimeLabel}>{formatTime(item.created_at)}</Text>
-              <View style={styles.journalTimeLine} />
-            </View>
-
-            <View style={styles.journalContent}>
-              <View style={styles.journalHeader}>
-                {item.title ? (
-                  <Text style={styles.journalTitle} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                ) : (
-                  <Text style={styles.journalTitleMuted}>Untitled Dream</Text>
-                )}
-
-                <View style={styles.journalBadges}>
-                  {item.dream_type && item.dream_tag && (
-                    <View style={styles.journalTagBadge}>
-                      <Text style={styles.journalTagEmoji}>{TAG_EMOJIS[item.dream_tag] || '✨'}</Text>
-                    </View>
-                  )}
-                  {hasAudio && (
-                    <View style={styles.journalBadge}>
-                      <Ionicons name="mic" size={10} color={theme.primary} />
-                    </View>
-                  )}
-                  <View style={[styles.journalBadge, item.is_public ? styles.badgePublic : styles.badgePrivate]}>
-                    <Ionicons
-                      name={item.is_public ? 'globe-outline' : 'lock-closed'}
-                      size={10}
-                      color={item.is_public ? theme.primary : theme.gold}
-                    />
-                  </View>
-                </View>
-              </View>
-
-              {hasContent && (
-                <Text style={styles.journalExcerpt} numberOfLines={2}>
-                  {item.content}
-                </Text>
-              )}
-
-              {hasAudio && (
-                <View style={styles.journalAudio}>
-                  <PlayButton
-                    isPlaying={isPlaying}
-                    isLoading={isLoading}
-                    onPress={() => playAudio(item, 'journal')}
-                    size="small"
-                  />
-                  <View style={styles.journalProgressTrack}>
-                    <View style={[styles.journalProgressFill, { width: `${progressPercent}%` }]} />
-                  </View>
-                  <Text style={styles.journalDuration}>
-                    {isThisPlaying ? formatDurationMs(status.currentTime) : formatDuration(item.audio_duration)}
-                  </Text>
-                </View>
+                )
               )}
             </View>
-
-            <Ionicons name="chevron-forward" size={16} color={theme.textMuted} style={styles.journalChevron} />
           </View>
-        </TouchableOpacity>
-      );
-    }
-  );
+        </Animated.View>
+      </Pressable>
+    );
+  });
 
-  // Stats Card
-  const StatsCard = ({
-    icon,
-    label,
-    value,
-    color,
-  }: {
-    icon: string;
-    label: string;
-    value: number | string;
-    color: string;
-  }) => (
+  const JournalEntryCard = React.memo(({ item, onPress }: { item: DreamWithMeta; onPress: () => void }) => {
+    const isPlaying = isPlayingInContext(item.id, 'journal');
+    const isThisPlaying = isThisDreamInContext(item.id, 'journal');
+    const isLoading = isAudioLoading === item.id;
+    const hasAudio = !!item.audio_url;
+    const hasContent = !!item.content;
+    const progressPercent = isThisPlaying && status.duration > 0 ? Math.min(100, (status.currentTime / status.duration) * 100) : 0;
+
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+        <View style={[styles.journalCard, isPlaying && styles.journalCardActive]}>
+          <View style={styles.journalTimeCol}>
+            <Text style={styles.journalDateLabel}>{formatJournalDate(item.dream_date)}</Text>
+            <Text style={styles.journalTimeLabel}>{formatTime(item.created_at)}</Text>
+            <View style={styles.journalTimeLine} />
+          </View>
+          <View style={styles.journalContent}>
+            <View style={styles.journalHeader}>
+              {item.title ? <Text style={styles.journalTitle} numberOfLines={1}>{item.title}</Text> : <Text style={styles.journalTitleMuted}>Untitled Dream</Text>}
+              <View style={styles.journalBadges}>
+                {item.dream_type && item.dream_tag && <View style={styles.journalTagBadge}><Text style={styles.journalTagEmoji}>{TAG_EMOJIS[item.dream_tag] || '✨'}</Text></View>}
+                {hasAudio && <View style={styles.journalBadge}><Ionicons name="mic" size={10} color={theme.primary} /></View>}
+                <View style={[styles.journalBadge, item.is_public ? styles.badgePublic : styles.badgePrivate]}>
+                  <Ionicons name={item.is_public ? 'globe-outline' : 'lock-closed'} size={10} color={item.is_public ? theme.primary : theme.gold} />
+                </View>
+              </View>
+            </View>
+            {hasContent && <Text style={styles.journalExcerpt} numberOfLines={2}>{item.content}</Text>}
+            {hasAudio && (
+              <View style={styles.journalAudio}>
+                <PlayButton isPlaying={isPlaying} isLoading={isLoading} onPress={() => playAudio(item, 'journal')} size="small" />
+                <View style={styles.journalProgressTrack}><View style={[styles.journalProgressFill, { width: `${progressPercent}%` }]} /></View>
+                <Text style={styles.journalDuration}>{isThisPlaying ? formatDurationMs(status.currentTime) : formatDuration(item.audio_duration)}</Text>
+              </View>
+            )}
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={theme.textMuted} style={styles.journalChevron} />
+        </View>
+      </TouchableOpacity>
+    );
+  });
+
+  const StatsCard = ({ icon, label, value, color }: { icon: string; label: string; value: number | string; color: string }) => (
     <View style={[styles.statCard, { borderColor: color + '30' }]}>
-      <View style={[styles.statIconWrap, { backgroundColor: color + '20' }]}>
-        <Ionicons name={icon as any} size={18} color={color} />
-      </View>
+      <View style={[styles.statIconWrap, { backgroundColor: color + '20' }]}><Ionicons name={icon as any} size={18} color={color} /></View>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 
-  // Interpretation Thread Item
-  const InterpretationThread = ({
-    interpretation,
-    depth = 0,
-  }: {
-    interpretation: Interpretation;
-    depth?: number;
-  }) => {
+  const InterpretationThread = ({ interpretation, depth = 0 }: { interpretation: Interpretation; depth?: number }) => {
     const avatarUrl = getAvatarUrl(interpretation.author || null, 'User');
     const displayName = interpretation.author?.display_name || interpretation.author?.username || 'Anonymous';
 
     return (
       <View style={[styles.threadItem, { marginLeft: depth * 16 }]}>
         {depth > 0 && <View style={styles.threadLine} />}
-        <LinearGradient
-          colors={
-            depth === 0
-              ? ['rgba(212, 175, 55, 0.1)', 'rgba(212, 175, 55, 0.02)']
-              : ['rgba(96, 165, 250, 0.08)', 'rgba(96, 165, 250, 0.02)']
-          }
-          style={styles.threadContent}
-        >
-          <TouchableOpacity
-            style={styles.threadHeader}
-            onPress={() => navigateToProfile(interpretation.author || null, interpretation.user_id)}
-            activeOpacity={0.7}
-          >
+        <LinearGradient colors={depth === 0 ? ['rgba(212, 175, 55, 0.1)', 'rgba(212, 175, 55, 0.02)'] : ['rgba(96, 165, 250, 0.08)', 'rgba(96, 165, 250, 0.02)']} style={styles.threadContent}>
+          <TouchableOpacity style={styles.threadHeader} onPress={() => navigateToProfile(interpretation.author || null, interpretation.user_id)} activeOpacity={0.7}>
             <Image source={{ uri: avatarUrl }} style={styles.threadAvatar} />
             <View style={styles.threadMeta}>
               <Text style={styles.threadAuthor}>{displayName}</Text>
@@ -1605,79 +1090,43 @@ export default function MainScreen({ navigation }: any) {
           </TouchableOpacity>
           <Text style={styles.threadText}>{interpretation.content}</Text>
         </LinearGradient>
-        {interpretation.replies?.map((reply) => (
-          <InterpretationThread key={reply.id} interpretation={reply} depth={depth + 1} />
-        ))}
+        {interpretation.replies?.map((reply) => <InterpretationThread key={reply.id} interpretation={reply} depth={depth + 1} />)}
       </View>
     );
   };
 
-  // Dream Modal
   const DreamModal = useMemo(() => {
     if (!selectedDream) return null;
-
     const dream = selectedDream;
     const isPlaying = isPlayingInContext(dream.id, 'modal');
     const isThisDream = isThisDreamInContext(dream.id, 'modal');
     const isMine = dream.user_id === user?.id;
-    const progressPercent =
-      isThisDream && status.duration > 0 ? Math.min(100, (status.currentTime / status.duration) * 100) : 0;
-
-    const userName =
-      isMine ? 'You' : dream.authorProfile?.display_name || dream.authorProfile?.username || 'Dreamer';
+    const progressPercent = isThisDream && status.duration > 0 ? Math.min(100, (status.currentTime / status.duration) * 100) : 0;
+    const userName = isMine ? 'You' : dream.authorProfile?.display_name || dream.authorProfile?.username || 'Dreamer';
     const avatarUrl = getAvatarUrl(dream.authorProfile || null, userName);
-
     const canInterpret = dream.interpretation_mode && dream.interpretation_mode !== 'disabled';
     const showThread = canInterpret && interpretations.length > 0;
 
     return (
-      <Modal
-        visible={modalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={closeDreamModal}
-        statusBarTranslucent
-      >
+      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={closeDreamModal} statusBarTranslucent>
         <View style={styles.modalOverlay}>
           <SafeAreaView style={styles.modalWrap}>
             <LinearGradient colors={[theme.backgroundGradientStart, theme.backgroundGradientEnd]} style={styles.modalBg}>
               <View style={styles.modalHeader}>
-                <TouchableOpacity onPress={closeDreamModal} style={styles.modalClose}>
-                  <Ionicons name="chevron-down" size={28} color={theme.textPrimary} />
-                </TouchableOpacity>
+                <TouchableOpacity onPress={closeDreamModal} style={styles.modalClose}><Ionicons name="chevron-down" size={28} color={theme.textPrimary} /></TouchableOpacity>
                 <View style={styles.modalHeaderCenter}>
                   <Text style={styles.modalHeaderText}>Dream</Text>
-                  {dream.dream_type && dream.dream_tag && (
-                    <View style={styles.modalTagBadge}>
-                      <Text style={styles.modalTagEmoji}>{TAG_EMOJIS[dream.dream_tag] || '✨'}</Text>
-                    </View>
-                  )}
+                  {dream.dream_type && dream.dream_tag && <View style={styles.modalTagBadge}><Text style={styles.modalTagEmoji}>{TAG_EMOJIS[dream.dream_tag] || '✨'}</Text></View>}
                 </View>
-                {isMine ? (
-                  <TouchableOpacity onPress={() => deleteDream(dream.id)} style={styles.modalClose}>
-                    <Ionicons name="trash-outline" size={24} color={theme.danger} />
-                  </TouchableOpacity>
-                ) : (
-                  <View style={{ width: 44 }} />
-                )}
+                {isMine ? <TouchableOpacity onPress={() => showDeleteConfirmation(dream.id)} style={styles.modalClose}><Ionicons name="trash-outline" size={24} color={theme.danger} /></TouchableOpacity> : <View style={{ width: 44 }} />}
               </View>
 
-              <ScrollView
-                style={styles.modalScroll}
-                contentContainerStyle={styles.modalScrollContent}
-                showsVerticalScrollIndicator={false}
-              >
-                <TouchableOpacity
-                  style={styles.modalUser}
-                  onPress={() => navigateToProfile(dream.authorProfile || null, dream.user_id)}
-                  activeOpacity={0.7}
-                >
+              <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+                <TouchableOpacity style={styles.modalUser} onPress={() => navigateToProfile(dream.authorProfile || null, dream.user_id)} activeOpacity={0.7}>
                   <Image source={{ uri: avatarUrl }} style={styles.modalAvatar} />
                   <View>
                     <Text style={styles.modalUserName}>{userName}</Text>
-                    <Text style={styles.modalDate}>
-                      {formatFullDate(dream.dream_date)} • {formatTime(dream.created_at)}
-                    </Text>
+                    <Text style={styles.modalDate}>{formatFullDate(dream.dream_date)} • {formatTime(dream.created_at)}</Text>
                   </View>
                 </TouchableOpacity>
 
@@ -1686,16 +1135,9 @@ export default function MainScreen({ navigation }: any) {
 
                 {dream.audio_url && (
                   <View style={styles.modalAudio}>
-                    <PlayButton
-                      isPlaying={isPlaying}
-                      isLoading={isAudioLoading === dream.id}
-                      onPress={() => playAudio(dream, 'modal')}
-                      size="large"
-                    />
+                    <PlayButton isPlaying={isPlaying} isLoading={isAudioLoading === dream.id} onPress={() => playAudio(dream, 'modal')} size="large" />
                     <View style={styles.modalAudioInfo}>
-                      <View style={styles.modalProgressTrack}>
-                        <View style={[styles.modalProgressFill, { width: `${progressPercent}%` }]} />
-                      </View>
+                      <View style={styles.modalProgressTrack}><View style={[styles.modalProgressFill, { width: `${progressPercent}%` }]} /></View>
                       <View style={styles.modalTimeRow}>
                         <Text style={styles.modalTimeText}>{isThisDream ? formatDurationMs(status.currentTime) : '0:00'}</Text>
                         <Text style={styles.modalTimeText}>{formatDuration(dream.audio_duration)}</Text>
@@ -1708,21 +1150,14 @@ export default function MainScreen({ navigation }: any) {
                   <View style={styles.modalEngagement}>
                     {dream.enable_engagement && (
                       <>
-                        <TouchableOpacity
-                          style={[styles.modalEngageBtn, dream.isLiked && styles.modalEngageBtnActive]}
-                          onPress={() => toggleLike(dream)}
-                        >
+                        <TouchableOpacity style={[styles.modalEngageBtn, dream.isLiked && styles.modalEngageBtnActive]} onPress={() => toggleLike(dream)}>
                           <Text style={styles.modalReactionEmoji}>💫</Text>
-                          <Text style={[styles.modalEngageText, dream.isLiked && styles.modalEngageTextActive]}>
-                            {dream.likeCount || 0}
-                          </Text>
+                          <Text style={[styles.modalEngageText, dream.isLiked && styles.modalEngageTextActive]}>{dream.likeCount || 0}</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.modalEngageBtn} onPress={() => showComingSoon('Wow Reactions')}>
-                          <Text style={styles.modalWowText}>wow</Text>
-                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.modalEngageBtn} onPress={() => showComingSoon('Wow Reactions')}><Text style={styles.modalWowText}>wow</Text></TouchableOpacity>
                       </>
                     )}
-                    {canInterpret && (
+                    {canInterpret && !isMine && (
                       <TouchableOpacity style={styles.modalEngageBtn} onPress={() => showComingSoon('Add Interpretation')}>
                         <Feather name="eye" size={20} color={theme.gold} />
                         <Text style={styles.modalEngageText}>Decipher</Text>
@@ -1735,14 +1170,10 @@ export default function MainScreen({ navigation }: any) {
                   <View style={styles.threadSection}>
                     <View style={styles.threadSectionHeader}>
                       <Feather name="eye" size={18} color={theme.gold} />
-                      <Text style={styles.threadSectionTitle}>Deciphered</Text>
+                      <Text style={styles.threadSectionTitle}>Interpretations</Text>
                       <Text style={styles.threadSectionCount}>{interpretations.length}</Text>
                     </View>
-                    {interpretationsLoading ? (
-                      <ActivityIndicator size="small" color={theme.gold} style={{ marginTop: 16 }} />
-                    ) : (
-                      interpretations.map((interp) => <InterpretationThread key={interp.id} interpretation={interp} />)
-                    )}
+                    {interpretationsLoading ? <ActivityIndicator size="small" color={theme.gold} style={{ marginTop: 16 }} /> : interpretations.map((interp) => <InterpretationThread key={interp.id} interpretation={interp} />)}
                   </View>
                 )}
               </ScrollView>
@@ -1751,129 +1182,32 @@ export default function MainScreen({ navigation }: any) {
         </View>
       </Modal>
     );
-  }, [
-    selectedDream,
-    modalVisible,
-    playingId,
-    playingContext,
-    status,
-    isAudioLoading,
-    interpretations,
-    interpretationsLoading,
-    closeDreamModal,
-    user?.id,
-    isPlayingInContext,
-    isThisDreamInContext,
-    playAudio,
-    toggleLike,
-  ]);
+  }, [selectedDream, modalVisible, playingId, playingContext, status, isAudioLoading, interpretations, interpretationsLoading]);
 
-  // Feed Content
   const FeedContent = () => {
-    if (feedLoading) {
-      return (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={theme.primary} />
-          <Text style={styles.loadingText}>Loading dreams...</Text>
-        </View>
-      );
-    }
-
-    if (feedError) {
-      return (
-        <View style={styles.center}>
-          <Ionicons name="cloud-offline-outline" size={48} color={theme.textSubtle} />
-          <Text style={styles.stateTitle}>Connection Issue</Text>
-          <Text style={styles.stateSubtitle}>{feedError}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={fetchFeedDreams}>
-            <Text style={styles.retryText}>Try Again</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    if (feedDreams.length === 0) {
-      return (
-        <View style={styles.center}>
-          <Ionicons name="moon-outline" size={48} color={theme.textSubtle} />
-          <Text style={styles.stateTitle}>No dreams yet</Text>
-          <Text style={styles.stateSubtitle}>Be the first to share</Text>
-          <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('RecordDream')}>
-            <Text style={styles.primaryBtnText}>Share a Dream</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    return (
-      <FlatList
-        data={feedDreams}
-        renderItem={({ item }) => <FeedDreamCard item={item} onPress={() => openDreamModal(item)} />}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.feedList}
-        refreshing={feedLoading}
-        onRefresh={fetchFeedDreams}
-        showsVerticalScrollIndicator={false}
-      />
-    );
+    if (feedLoading) return <View style={styles.center}><ActivityIndicator size="large" color={theme.primary} /><Text style={styles.loadingText}>Loading dreams...</Text></View>;
+    if (feedError) return <View style={styles.center}><Ionicons name="cloud-offline-outline" size={48} color={theme.textSubtle} /><Text style={styles.stateTitle}>Connection Issue</Text><Text style={styles.stateSubtitle}>{feedError}</Text><TouchableOpacity style={styles.retryBtn} onPress={fetchFeedDreams}><Text style={styles.retryText}>Try Again</Text></TouchableOpacity></View>;
+    if (feedDreams.length === 0) return <View style={styles.center}><Ionicons name="moon-outline" size={48} color={theme.textSubtle} /><Text style={styles.stateTitle}>No dreams yet</Text><Text style={styles.stateSubtitle}>Be the first to share</Text><TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('RecordDream')}><Text style={styles.primaryBtnText}>Share a Dream</Text></TouchableOpacity></View>;
+    return <FlatList data={feedDreams} renderItem={({ item }) => <FeedDreamCard item={item} onPress={() => openDreamModal(item)} />} keyExtractor={(item) => item.id} contentContainerStyle={styles.feedList} refreshing={feedLoading} onRefresh={fetchFeedDreams} showsVerticalScrollIndicator={false} />;
   };
 
-  // Journal Content
   const JournalContent = () => {
-    if (myDreamsLoading) {
-      return (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={theme.gold} />
-          <Text style={styles.loadingText}>Loading your journal...</Text>
-        </View>
-      );
-    }
-
-    if (myDreamsError) {
-      return (
-        <View style={styles.center}>
-          <Ionicons name="cloud-offline-outline" size={48} color={theme.textSubtle} />
-          <Text style={styles.stateTitle}>Connection Issue</Text>
-          <Text style={styles.stateSubtitle}>{myDreamsError}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={fetchMyDreams}>
-            <Text style={styles.retryText}>Try Again</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
+    if (myDreamsLoading) return <View style={styles.center}><ActivityIndicator size="large" color={theme.gold} /><Text style={styles.loadingText}>Loading your journal...</Text></View>;
+    if (myDreamsError) return <View style={styles.center}><Ionicons name="cloud-offline-outline" size={48} color={theme.textSubtle} /><Text style={styles.stateTitle}>Connection Issue</Text><Text style={styles.stateSubtitle}>{myDreamsError}</Text><TouchableOpacity style={styles.retryBtn} onPress={fetchMyDreams}><Text style={styles.retryText}>Try Again</Text></TouchableOpacity></View>;
 
     if (myDreams.length === 0) {
       return (
         <ScrollView style={styles.journalScrollEmpty} contentContainerStyle={styles.emptyJournal}>
-          <View style={styles.emptyJournalIcon}>
-            <Ionicons name="book-outline" size={64} color={theme.gold} />
-          </View>
+          <View style={styles.emptyJournalIcon}><Ionicons name="book-outline" size={64} color={theme.gold} /></View>
           <Text style={styles.emptyJournalTitle}>Your Dream Journal</Text>
-          <Text style={styles.emptyJournalText}>
-            Start capturing your dreams to unlock insights about your subconscious mind. Recording dreams regularly can
-            help you remember them better and discover patterns.
-          </Text>
-
+          <Text style={styles.emptyJournalText}>Start capturing your dreams to unlock insights about your subconscious mind.</Text>
           <View style={styles.emptyBenefits}>
-            <View style={styles.benefitItem}>
-              <Ionicons name="sparkles" size={20} color={theme.gold} />
-              <Text style={styles.benefitText}>Improve dream recall</Text>
-            </View>
-            <View style={styles.benefitItem}>
-              <Ionicons name="analytics-outline" size={20} color={theme.primary} />
-              <Text style={styles.benefitText}>Discover patterns</Text>
-            </View>
-            <View style={styles.benefitItem}>
-              <Ionicons name="bulb-outline" size={20} color={theme.purple} />
-              <Text style={styles.benefitText}>Gain insights</Text>
-            </View>
+            <View style={styles.benefitItem}><Ionicons name="sparkles" size={20} color={theme.gold} /><Text style={styles.benefitText}>Improve dream recall</Text></View>
+            <View style={styles.benefitItem}><Ionicons name="analytics-outline" size={20} color={theme.primary} /><Text style={styles.benefitText}>Discover patterns</Text></View>
+            <View style={styles.benefitItem}><Ionicons name="bulb-outline" size={20} color={theme.purple} /><Text style={styles.benefitText}>Gain insights</Text></View>
           </View>
-
           <TouchableOpacity style={styles.emptyRecordBtn} onPress={() => navigation.navigate('RecordDream')}>
-            <LinearGradient colors={[theme.gold, '#b8962e']} style={styles.emptyRecordGradient}>
-              <Feather name="feather" size={20} color="#fff" />
-              <Text style={styles.emptyRecordText}>Tell Your First Dream</Text>
-            </LinearGradient>
+            <LinearGradient colors={[theme.gold, '#b8962e']} style={styles.emptyRecordGradient}><Feather name="feather" size={20} color="#fff" /><Text style={styles.emptyRecordText}>Tell Your First Dream</Text></LinearGradient>
           </TouchableOpacity>
         </ScrollView>
       );
@@ -1886,75 +1220,23 @@ export default function MainScreen({ navigation }: any) {
           <StatsCard icon="flame" label="Streak" value={`${journalStats.streak}d`} color={theme.gold} />
           <StatsCard icon="calendar" label="This Month" value={journalStats.thisMonth} color={theme.purple} />
         </View>
-
         <View style={styles.searchContainer}>
           <Ionicons name="search" size={18} color={theme.textMuted} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search your dreams..."
-            placeholderTextColor={theme.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={18} color={theme.textMuted} />
-            </TouchableOpacity>
-          )}
+          <TextInput style={styles.searchInput} placeholder="Search your dreams..." placeholderTextColor={theme.textMuted} value={searchQuery} onChangeText={setSearchQuery} />
+          {searchQuery.length > 0 && <TouchableOpacity onPress={() => setSearchQuery('')}><Ionicons name="close-circle" size={18} color={theme.textMuted} /></TouchableOpacity>}
         </View>
-
         {journalStats.months.length > 1 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.monthFilter}
-            contentContainerStyle={styles.monthFilterContent}
-          >
-            <TouchableOpacity
-              style={[styles.monthPill, !selectedMonth && styles.monthPillActive]}
-              onPress={() => setSelectedMonth(null)}
-            >
-              <Text style={[styles.monthPillText, !selectedMonth && styles.monthPillTextActive]}>All</Text>
-            </TouchableOpacity>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.monthFilter} contentContainerStyle={styles.monthFilterContent}>
+            <TouchableOpacity style={[styles.monthPill, !selectedMonth && styles.monthPillActive]} onPress={() => setSelectedMonth(null)}><Text style={[styles.monthPillText, !selectedMonth && styles.monthPillTextActive]}>All</Text></TouchableOpacity>
             {journalStats.months.slice(0, 6).map((month) => {
               const [year, m] = month.split('-');
               const label = new Date(parseInt(year), parseInt(m) - 1).toLocaleDateString('en-US', { month: 'short' });
-              return (
-                <TouchableOpacity
-                  key={month}
-                  style={[styles.monthPill, selectedMonth === month && styles.monthPillActive]}
-                  onPress={() => setSelectedMonth(selectedMonth === month ? null : month)}
-                >
-                  <Text style={[styles.monthPillText, selectedMonth === month && styles.monthPillTextActive]}>
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              );
+              return <TouchableOpacity key={month} style={[styles.monthPill, selectedMonth === month && styles.monthPillActive]} onPress={() => setSelectedMonth(selectedMonth === month ? null : month)}><Text style={[styles.monthPillText, selectedMonth === month && styles.monthPillTextActive]}>{label}</Text></TouchableOpacity>;
             })}
           </ScrollView>
         )}
-
-        {groupedDreams.length === 0 ? (
-          <View style={styles.noResults}>
-            <Ionicons name="search-outline" size={32} color={theme.textMuted} />
-            <Text style={styles.noResultsText}>No dreams found</Text>
-          </View>
-        ) : (
-          <SectionList
-            sections={groupedDreams}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <JournalEntryCard item={item} onPress={() => openDreamModal(item)} />}
-            renderSectionHeader={({ section: { title } }) => (
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>{title}</Text>
-              </View>
-            )}
-            contentContainerStyle={styles.journalList}
-            stickySectionHeadersEnabled={false}
-            refreshing={myDreamsLoading}
-            onRefresh={fetchMyDreams}
-            showsVerticalScrollIndicator={false}
-          />
+        {groupedDreams.length === 0 ? <View style={styles.noResults}><Ionicons name="search-outline" size={32} color={theme.textMuted} /><Text style={styles.noResultsText}>No dreams found</Text></View> : (
+          <SectionList sections={groupedDreams} keyExtractor={(item) => item.id} renderItem={({ item }) => <JournalEntryCard item={item} onPress={() => openDreamModal(item)} />} renderSectionHeader={({ section: { title } }) => <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>{title}</Text></View>} contentContainerStyle={styles.journalList} stickySectionHeadersEnabled={false} refreshing={myDreamsLoading} onRefresh={fetchMyDreams} showsVerticalScrollIndicator={false} />
         )}
       </View>
     );
@@ -1963,51 +1245,24 @@ export default function MainScreen({ navigation }: any) {
   return (
     <AnimatedGradientBackground onGradientChange={setCurrentGradientIndex}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.navigate('Profile')} activeOpacity={0.8}>
-            <Image source={{ uri: getUserAvatarUrl() }} style={styles.headerAvatar} />
-          </TouchableOpacity>
-
+          <TouchableOpacity onPress={() => navigation.navigate('Profile')} activeOpacity={0.8}><Image source={{ uri: getUserAvatarUrl() }} style={styles.headerAvatar} /></TouchableOpacity>
           <View style={styles.tabRow}>
-            <TouchableOpacity style={styles.tab} onPress={() => switchTab(0)}>
-              <Text style={[styles.tabText, activeTab === 0 && styles.tabActive]}>Feed</Text>
-              {activeTab === 0 && <View style={styles.tabDot} />}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.tab} onPress={() => switchTab(1)}>
-              <Text style={[styles.tabText, activeTab === 1 && styles.tabActiveGold]}>Journal</Text>
-              {activeTab === 1 && <View style={[styles.tabDot, styles.tabDotGold]} />}
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.tab} onPress={() => switchTab(0)}><Text style={[styles.tabText, activeTab === 0 && styles.tabActive]}>Feed</Text>{activeTab === 0 && <View style={styles.tabDot} />}</TouchableOpacity>
+            <TouchableOpacity style={styles.tab} onPress={() => switchTab(1)}><Text style={[styles.tabText, activeTab === 1 && styles.tabActiveGold]}>Journal</Text>{activeTab === 1 && <View style={[styles.tabDot, styles.tabDotGold]} />}</TouchableOpacity>
           </View>
-
-          <TouchableOpacity onPress={() => navigation.navigate('Notifications')} style={styles.notificationBtn}>
-            <Ionicons name="notifications-outline" size={22} color={theme.textPrimary} />
-            {hasNotifications && <GlowingStar />}
-          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('Notifications')} style={styles.notificationBtn}><Ionicons name="notifications-outline" size={22} color={theme.textPrimary} />{hasNotifications && <GlowingStar />}</TouchableOpacity>
         </View>
 
-        {/* Pages */}
         <PagerView ref={pagerRef} style={styles.pager} initialPage={0} onPageSelected={onPageSelected}>
-          <View key="feed" style={styles.page}>
-            {FeedContent()}
-          </View>
-          <View key="journal" style={styles.page}>
-            {JournalContent()}
-          </View>
+          <View key="feed" style={styles.page}>{FeedContent()}</View>
+          <View key="journal" style={styles.page}>{JournalContent()}</View>
         </PagerView>
 
-        {/* Bottom Nav */}
         <View style={styles.bottomNavContainer}>
           <View style={styles.bottomNav}>
-            <TouchableOpacity style={styles.navBtn} onPress={handleCirclesPress} activeOpacity={0.7}>
-              <View style={styles.navBtnInner}>
-                <Ionicons name="people-outline" size={20} color={theme.textPrimary} />
-                <Text style={styles.navBtnText}>Circles</Text>
-              </View>
-            </TouchableOpacity>
-
+            <TouchableOpacity style={styles.navBtn} onPress={handleCirclesPress} activeOpacity={0.7}><View style={styles.navBtnInner}><Ionicons name="people-outline" size={20} color={theme.textPrimary} /><Text style={styles.navBtnText}>Circles</Text></View></TouchableOpacity>
             <Text style={styles.logoText}>Àlá</Text>
-
             <AnimatedTellButton onPress={() => navigation.navigate('RecordDream')} gradientIndex={currentGradientIndex} />
           </View>
         </View>
@@ -2015,1036 +1270,205 @@ export default function MainScreen({ navigation }: any) {
 
       {DreamModal}
       <ComingSoonModal visible={comingSoonVisible} onClose={() => setComingSoonVisible(false)} feature={comingSoonFeature} />
+      <ConfirmModal visible={deleteModalVisible} onClose={() => { setDeleteModalVisible(false); setDreamToDelete(null); }} onConfirm={confirmDeleteDream} title="Delete Dream" message="This dream will be permanently deleted. This action cannot be undone." confirmText="Delete" cancelText="Keep" confirmColor={theme.danger} icon="trash-outline" />
     </AnimatedGradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  gradientContainer: {
-    flex: 1,
-  },
+  gradientContainer: { flex: 1 },
   safeArea: { flex: 1 },
-
-  glowingStar: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-  },
-
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  headerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: theme.glassBorder,
-  },
-  tabRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 28,
-  },
-  tab: {
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  tabText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.textMuted,
-  },
-  tabActive: {
-    color: theme.textPrimary,
-  },
-  tabActiveGold: {
-    color: theme.gold,
-  },
-  tabDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.primary,
-    marginTop: 4,
-  },
-  tabDotGold: {
-    backgroundColor: theme.gold,
-  },
-  notificationBtn: {
-    position: 'relative',
-    padding: 4,
-  },
-
+  glowingStar: { position: 'absolute', top: -4, right: -4 },
+  confirmModalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.75)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  confirmModalContainer: { width: '100%', maxWidth: 320 },
+  confirmModalContent: { borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: theme.glassBorderLight },
+  confirmModalGlass: { backgroundColor: 'rgba(15, 23, 42, 0.95)', padding: 28, alignItems: 'center' },
+  confirmModalIconWrap: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  confirmModalTitle: { fontSize: 20, fontWeight: '700', color: theme.textPrimary, marginBottom: 8, textAlign: 'center' },
+  confirmModalMessage: { fontSize: 14, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  confirmModalButtons: { flexDirection: 'row', gap: 12, width: '100%' },
+  confirmModalCancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: theme.glass, borderWidth: 1, borderColor: theme.glassBorder, alignItems: 'center' },
+  confirmModalCancelText: { fontSize: 15, fontWeight: '600', color: theme.textSecondary },
+  confirmModalConfirmBtn: { flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center' },
+  confirmModalConfirmText: { fontSize: 15, fontWeight: '600', color: '#fff' },
+  seeInterpretationsBtn: { paddingVertical: 6, paddingHorizontal: 4 },
+  seeInterpretationsText: { fontSize: 13, color: theme.gold, fontWeight: '500' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 12 },
+  headerAvatar: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, borderColor: theme.glassBorder },
+  tabRow: { flexDirection: 'row', alignItems: 'center', gap: 28 },
+  tab: { alignItems: 'center', paddingVertical: 4 },
+  tabText: { fontSize: 15, fontWeight: '600', color: theme.textMuted },
+  tabActive: { color: theme.textPrimary },
+  tabActiveGold: { color: theme.gold },
+  tabDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: theme.primary, marginTop: 4 },
+  tabDotGold: { backgroundColor: theme.gold },
+  notificationBtn: { position: 'relative', padding: 4 },
   pager: { flex: 1 },
   page: { flex: 1 },
-
-  feedList: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 140,
-  },
-
-  // Feed Card
-  feedCardTransparent: {
-    marginBottom: 20,
-    borderRadius: 20,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  feedCardBorder: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-  },
-  feedCardContent: {
-    padding: 16,
-  },
-  feedCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  userRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    marginRight: 10,
-  },
-  userName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.textPrimary,
-  },
-  dateText: {
-    fontSize: 12,
-    color: theme.textSubtle,
-    marginTop: 1,
-  },
-  cardBody: {
-    marginBottom: 12,
-  },
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: theme.textPrimary,
-    marginBottom: 4,
-  },
-  cardExcerpt: {
-    fontSize: 14,
-    color: theme.textSecondary,
-    lineHeight: 20,
-  },
-  cardExcerptMuted: {
-    fontSize: 14,
-    color: theme.textMuted,
-    fontStyle: 'italic',
-  },
-
-  // Dream Tag Badge (emoji only)
-  dreamTagBadge: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    zIndex: 10,
-  },
-  dreamTagEmoji: {
-    fontSize: 22,
-    textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-
-  // Universal Dream/Nightmare Overlay
-  dreamOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 20,
-    overflow: 'hidden',
-    zIndex: 1,
-  },
-  overlayTopRight: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-  },
-  overlayBottomLeft: {
-    position: 'absolute',
-    bottom: -8,
-    left: -8,
-    transform: [{ rotate: '180deg' }],
-  },
-  overlayEmoji: {
-    fontSize: 45,
-    opacity: 0.2,
-  },
-  overlayEmojiNightmare: {
-    opacity: 0.25,
-  },
-  overlayEmojiSmall: {
-    fontSize: 32,
-    opacity: 0.12,
-  },
-  overlayEmojiSmallNightmare: {
-    opacity: 0.15,
-  },
-  tintOverlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-
-  // Optimized Play Button
-  playBtnBase: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  playBtnActive: {
-    backgroundColor: theme.primary,
-  },
-
-  // Audio Player
-  audioPlayerTransparent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    borderRadius: 16,
-    marginBottom: 12,
-  },
-  progressWrap: {
-    flex: 1,
-  },
-  progressTrackTransparent: {
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: theme.gold,
-  },
-  durationText: {
-    fontSize: 12,
-    color: theme.textSubtle,
-    fontVariant: ['tabular-nums'],
-    minWidth: 36,
-    textAlign: 'right',
-  },
-  cardFooterTransparent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-
-  engagementLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-
-  // Reaction buttons
-  reactionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  reactionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-  },
-  reactionEmoji: {
-    fontSize: 18,
-    opacity: 0.6,
-  },
-  reactionEmojiActive: {
-    opacity: 1,
-  },
-  reactionCount: {
-    fontSize: 13,
-    color: theme.textMuted,
-    fontWeight: '500',
-  },
-  reactionCountActive: {
-    color: theme.gold,
-  },
-  wowText: {
-    fontSize: 13,
-    color: theme.textMuted,
-    fontWeight: '600',
-    fontStyle: 'italic',
-  },
-
-  // Decipher button
-  decipherBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-  },
-  decipherText: {
-    fontSize: 13,
-    color: theme.gold,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-
-  threadIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  threadCount: {
-    fontSize: 12,
-    color: theme.textSubtle,
-  },
-
-  // Journal
-  journalContainer: {
-    flex: 1,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    gap: 10,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: theme.glass,
-    borderRadius: 16,
-    padding: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  statIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: theme.textPrimary,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: theme.textSubtle,
-    marginTop: 2,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.glass,
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: theme.textPrimary,
-    marginLeft: 8,
-  },
-  monthFilter: {
-    marginTop: 12,
-    maxHeight: 36,
-  },
-  monthFilterContent: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  monthPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: theme.glass,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
-  },
-  monthPillActive: {
-    backgroundColor: theme.glowGold,
-    borderColor: theme.gold + '50',
-  },
-  monthPillText: {
-    fontSize: 13,
-    color: theme.textSubtle,
-    fontWeight: '500',
-  },
-  monthPillTextActive: {
-    color: theme.gold,
-  },
-  journalList: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 140,
-  },
-  sectionHeader: {
-    paddingVertical: 8,
-    marginTop: 8,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.textSubtle,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  journalCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: theme.glass,
-    borderRadius: 16,
-    marginBottom: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
-  },
-  journalCardActive: {
-    borderColor: theme.gold + '50',
-    backgroundColor: theme.glowGold,
-  },
-  journalTimeCol: {
-    alignItems: 'center',
-    marginRight: 12,
-    width: 56,
-  },
-  journalDateLabel: {
-    fontSize: 10,
-    color: theme.textSubtle,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  journalTimeLabel: {
-    fontSize: 11,
-    color: theme.textMuted,
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  journalTimeLine: {
-    width: 2,
-    height: 30,
-    backgroundColor: theme.glassBorder,
-    marginTop: 8,
-    borderRadius: 1,
-  },
-  journalContent: {
-    flex: 1,
-  },
-  journalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  journalTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.textPrimary,
-    flex: 1,
-    marginRight: 8,
-  },
-  journalTitleMuted: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.textMuted,
-    fontStyle: 'italic',
-    flex: 1,
-  },
-  journalBadges: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-  journalBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: theme.glowBlue,
-  },
-  journalTagBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  journalTagEmoji: {
-    fontSize: 14,
-  },
-  badgePublic: {
-    backgroundColor: theme.glowBlue,
-  },
-  badgePrivate: {
-    backgroundColor: theme.glowGold,
-  },
-  journalExcerpt: {
-    fontSize: 13,
-    color: theme.textSecondary,
-    lineHeight: 18,
-    marginBottom: 8,
-  },
-  journalAudio: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 4,
-  },
-  journalProgressTrack: {
-    flex: 1,
-    height: 3,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 1.5,
-    overflow: 'hidden',
-  },
-  journalProgressFill: {
-    height: '100%',
-    backgroundColor: theme.gold,
-  },
-  journalDuration: {
-    fontSize: 10,
-    color: theme.textMuted,
-    fontVariant: ['tabular-nums'],
-    width: 32,
-    textAlign: 'right',
-  },
-  journalChevron: {
-    marginLeft: 8,
-    alignSelf: 'center',
-  },
-  noResults: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 60,
-  },
-  noResultsText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: theme.textMuted,
-  },
-
-  journalScrollEmpty: {
-    flex: 1,
-  },
-  emptyJournal: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-    paddingBottom: 100,
-  },
-  emptyJournalIcon: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: theme.glowGold,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  emptyJournalTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: theme.textPrimary,
-    marginBottom: 12,
-  },
-  emptyJournalText: {
-    fontSize: 15,
-    color: theme.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 32,
-  },
-  emptyBenefits: {
-    width: '100%',
-    gap: 12,
-    marginBottom: 32,
-  },
-  benefitItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: theme.glass,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
-  },
-  benefitText: {
-    fontSize: 14,
-    color: theme.textPrimary,
-    fontWeight: '500',
-  },
-  emptyRecordBtn: {
-    borderRadius: 24,
-    overflow: 'hidden',
-  },
-  emptyRecordGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-  },
-  emptyRecordText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
-  },
-
-  // Bottom Nav
-  bottomNavContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 16,
-    paddingBottom: 28,
-  },
-  bottomNav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  navBtn: {
-    flex: 1,
-    maxWidth: 120,
-  },
-  navBtnInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  navBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.textPrimary,
-  },
-
-  // Tell button
-  tellBtnGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  tellIconContainer: {
-    width: 20,
-    height: 20,
-    position: 'relative',
-  },
-  tellIconWrap: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tellIconAbsolute: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  tellBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-
-  logoText: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: theme.gold,
-    textShadowColor: 'rgba(212, 175, 55, 0.6)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 20,
-  },
-
-  // States
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  loadingText: {
-    marginTop: 16,
-    color: theme.textSubtle,
-    fontSize: 14,
-  },
-  stateTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: theme.textPrimary,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  stateSubtitle: {
-    fontSize: 14,
-    color: theme.textSecondary,
-    textAlign: 'center',
-  },
-  retryBtn: {
-    marginTop: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 20,
-    backgroundColor: theme.glass,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
-  },
-  retryText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.textPrimary,
-  },
-  primaryBtn: {
-    marginTop: 20,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 24,
-    backgroundColor: theme.primary,
-  },
-  primaryBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-  },
-
-  // Modal
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  modalWrap: {
-    flex: 1,
-    marginTop: 40,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: 'hidden',
-  },
-  modalBg: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.glassBorder,
-  },
-  modalClose: {
-    padding: 8,
-    width: 44,
-    alignItems: 'center',
-  },
-  modalHeaderCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  modalHeaderText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: theme.textPrimary,
-  },
-  modalTagBadge: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalTagEmoji: {
-    fontSize: 16,
-  },
-  modalScroll: {
-    flex: 1,
-  },
-  modalScrollContent: {
-    padding: 20,
-    paddingBottom: 40,
-  },
-  modalUser: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginRight: 12,
-  },
-  modalUserName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.textPrimary,
-  },
-  modalDate: {
-    fontSize: 13,
-    color: theme.textSubtle,
-    marginTop: 2,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: theme.textPrimary,
-    marginBottom: 16,
-  },
-  modalContentText: {
-    fontSize: 16,
-    color: theme.textSecondary,
-    lineHeight: 26,
-    marginBottom: 24,
-  },
-  modalAudio: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    padding: 16,
-    backgroundColor: theme.glass,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
-    marginBottom: 24,
-  },
-  modalAudioInfo: {
-    flex: 1,
-  },
-  modalProgressTrack: {
-    height: 6,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  modalProgressFill: {
-    height: '100%',
-    backgroundColor: theme.gold,
-  },
-  modalTimeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  modalTimeText: {
-    fontSize: 12,
-    color: theme.textSubtle,
-    fontVariant: ['tabular-nums'],
-  },
-  modalEngagement: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
-  },
-  modalEngageBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 16,
-    backgroundColor: theme.glass,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
-  },
-  modalEngageBtnActive: {
-    backgroundColor: theme.glowGold,
-    borderColor: theme.gold + '30',
-  },
-  modalEngageText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.textSecondary,
-  },
-  modalEngageTextActive: {
-    color: theme.gold,
-  },
-  modalReactionEmoji: {
-    fontSize: 22,
-  },
-  modalWowText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.textSecondary,
-    fontStyle: 'italic',
-  },
-
-  threadSection: {
-    marginTop: 8,
-  },
-  threadSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.glassBorder,
-  },
-  threadSectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.textPrimary,
-    flex: 1,
-  },
-  threadSectionCount: {
-    fontSize: 14,
-    color: theme.gold,
-    fontWeight: '600',
-  },
-  threadItem: {
-    marginBottom: 12,
-    position: 'relative',
-  },
-  threadLine: {
-    position: 'absolute',
-    left: -12,
-    top: 20,
-    bottom: 0,
-    width: 2,
-    backgroundColor: theme.glassBorder,
-    borderRadius: 1,
-  },
-  threadContent: {
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
-  },
-  threadHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  threadAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginRight: 10,
-  },
-  threadMeta: {
-    flex: 1,
-  },
-  threadAuthor: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.textPrimary,
-  },
-  threadTime: {
-    fontSize: 11,
-    color: theme.textMuted,
-    marginTop: 1,
-  },
-  threadText: {
-    fontSize: 14,
-    color: theme.textSecondary,
-    lineHeight: 20,
-  },
-
-  comingSoonOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  comingSoonContent: {
-    width: '100%',
-    maxWidth: 320,
-    borderRadius: 24,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: theme.glassBorder,
-  },
-  comingSoonGradient: {
-    padding: 32,
-    alignItems: 'center',
-  },
-  comingSoonIconWrap: {
-    marginBottom: 20,
-  },
-  comingSoonIconBg: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  comingSoonTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: theme.textPrimary,
-    marginBottom: 8,
-  },
-  comingSoonFeature: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.gold,
-    marginBottom: 12,
-  },
-  comingSoonDesc: {
-    fontSize: 14,
-    color: theme.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  comingSoonBtn: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    width: '100%',
-  },
-  comingSoonBtnGradient: {
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  comingSoonBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#fff',
-  },
+  feedList: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 140 },
+  feedCardTransparent: { marginBottom: 20, borderRadius: 20, position: 'relative', overflow: 'hidden' },
+  feedCardBorder: { ...StyleSheet.absoluteFillObject, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.15)', backgroundColor: 'rgba(255, 255, 255, 0.03)' },
+  feedCardContent: { padding: 16 },
+  feedCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  userRow: { flexDirection: 'row', alignItems: 'center' },
+  avatar: { width: 36, height: 36, borderRadius: 18, marginRight: 10 },
+  userName: { fontSize: 14, fontWeight: '600', color: theme.textPrimary },
+  dateText: { fontSize: 12, color: theme.textSubtle, marginTop: 1 },
+  cardBody: { marginBottom: 12 },
+  cardTitle: { fontSize: 17, fontWeight: '700', color: theme.textPrimary, marginBottom: 4 },
+  cardExcerpt: { fontSize: 14, color: theme.textSecondary, lineHeight: 20 },
+  cardExcerptMuted: { fontSize: 14, color: theme.textMuted, fontStyle: 'italic' },
+  dreamOverlay: { ...StyleSheet.absoluteFillObject, borderRadius: 20, overflow: 'hidden', zIndex: 1 },
+  overlayTopRight: { position: 'absolute', top: -8, right: -8 },
+  overlayBottomLeft: { position: 'absolute', bottom: -8, left: -8, transform: [{ rotate: '180deg' }] },
+  overlayEmoji: { fontSize: 45, opacity: 0.2 },
+  overlayEmojiNightmare: { opacity: 0.25 },
+  overlayEmojiSmall: { fontSize: 32, opacity: 0.12 },
+  overlayEmojiSmallNightmare: { opacity: 0.15 },
+  tintOverlay: { ...StyleSheet.absoluteFillObject },
+  playBtnBase: { backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
+  playBtnActive: { backgroundColor: theme.primary },
+  audioPlayerTransparent: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 16, marginBottom: 12 },
+  progressWrap: { flex: 1 },
+  progressTrackTransparent: { height: 4, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: theme.gold },
+  durationText: { fontSize: 12, color: theme.textSubtle, fontVariant: ['tabular-nums'], minWidth: 36, textAlign: 'right' },
+  cardFooterTransparent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  engagementLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reactionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reactionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 8 },
+  reactionEmoji: { fontSize: 18, opacity: 0.6 },
+  reactionEmojiActive: { opacity: 1 },
+  reactionCount: { fontSize: 13, color: theme.textMuted, fontWeight: '500' },
+  reactionCountActive: { color: theme.gold },
+  wowText: { fontSize: 13, color: theme.textMuted, fontWeight: '600', fontStyle: 'italic' },
+  decipherBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 4 },
+  decipherText: { fontSize: 13, color: theme.gold, fontWeight: '600', letterSpacing: 0.3 },
+  threadIndicator: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  threadCount: { fontSize: 12, color: theme.textSubtle },
+  journalContainer: { flex: 1 },
+  statsRow: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 8, gap: 10 },
+  statCard: { flex: 1, backgroundColor: theme.glass, borderRadius: 16, padding: 12, alignItems: 'center', borderWidth: 1 },
+  statIconWrap: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+  statValue: { fontSize: 20, fontWeight: '700', color: theme.textPrimary },
+  statLabel: { fontSize: 11, color: theme.textSubtle, marginTop: 2 },
+  searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.glass, borderRadius: 12, marginHorizontal: 16, marginTop: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: theme.glassBorder },
+  searchInput: { flex: 1, fontSize: 14, color: theme.textPrimary, marginLeft: 8 },
+  monthFilter: { marginTop: 12, maxHeight: 36 },
+  monthFilterContent: { paddingHorizontal: 16, gap: 8 },
+  monthPill: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, backgroundColor: theme.glass, borderWidth: 1, borderColor: theme.glassBorder },
+  monthPillActive: { backgroundColor: theme.glowGold, borderColor: theme.gold + '50' },
+  monthPillText: { fontSize: 13, color: theme.textSubtle, fontWeight: '500' },
+  monthPillTextActive: { color: theme.gold },
+  journalList: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 140 },
+  sectionHeader: { paddingVertical: 8, marginTop: 8 },
+  sectionTitle: { fontSize: 13, fontWeight: '600', color: theme.textSubtle, textTransform: 'uppercase', letterSpacing: 0.5 },
+  journalCard: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: theme.glass, borderRadius: 16, marginBottom: 10, padding: 12, borderWidth: 1, borderColor: theme.glassBorder },
+  journalCardActive: { borderColor: theme.gold + '50', backgroundColor: theme.glowGold },
+  journalTimeCol: { alignItems: 'center', marginRight: 12, width: 56 },
+  journalDateLabel: { fontSize: 10, color: theme.textSubtle, fontWeight: '600', textAlign: 'center' },
+  journalTimeLabel: { fontSize: 11, color: theme.textMuted, fontWeight: '500', marginTop: 2 },
+  journalTimeLine: { width: 2, height: 30, backgroundColor: theme.glassBorder, marginTop: 8, borderRadius: 1 },
+  journalContent: { flex: 1 },
+  journalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  journalTitle: { fontSize: 15, fontWeight: '600', color: theme.textPrimary, flex: 1, marginRight: 8 },
+  journalTitleMuted: { fontSize: 15, fontWeight: '600', color: theme.textMuted, fontStyle: 'italic', flex: 1 },
+  journalBadges: { flexDirection: 'row', gap: 4 },
+  journalBadge: { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.glowBlue },
+  journalTagBadge: { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent' },
+  journalTagEmoji: { fontSize: 14 },
+  badgePublic: { backgroundColor: theme.glowBlue },
+  badgePrivate: { backgroundColor: theme.glowGold },
+  journalExcerpt: { fontSize: 13, color: theme.textSecondary, lineHeight: 18, marginBottom: 8 },
+  journalAudio: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  journalProgressTrack: { flex: 1, height: 3, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 1.5, overflow: 'hidden' },
+  journalProgressFill: { height: '100%', backgroundColor: theme.gold },
+  journalDuration: { fontSize: 10, color: theme.textMuted, fontVariant: ['tabular-nums'], width: 32, textAlign: 'right' },
+  journalChevron: { marginLeft: 8, alignSelf: 'center' },
+  noResults: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 60 },
+  noResultsText: { marginTop: 12, fontSize: 14, color: theme.textMuted },
+  journalScrollEmpty: { flex: 1 },
+  emptyJournal: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, paddingBottom: 100 },
+  emptyJournalIcon: { width: 120, height: 120, borderRadius: 60, backgroundColor: theme.glowGold, justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
+  emptyJournalTitle: { fontSize: 24, fontWeight: '700', color: theme.textPrimary, marginBottom: 12 },
+  emptyJournalText: { fontSize: 15, color: theme.textSecondary, textAlign: 'center', lineHeight: 22, marginBottom: 32 },
+  emptyBenefits: { width: '100%', gap: 12, marginBottom: 32 },
+  benefitItem: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: theme.glass, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.glassBorder },
+  benefitText: { fontSize: 14, color: theme.textPrimary, fontWeight: '500' },
+  emptyRecordBtn: { borderRadius: 24, overflow: 'hidden' },
+  emptyRecordGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, paddingHorizontal: 32 },
+  emptyRecordText: { fontSize: 16, fontWeight: '600', color: '#fff' },
+  bottomNavContainer: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 16, paddingBottom: 28 },
+  bottomNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  navBtn: { flex: 1, maxWidth: 120 },
+  navBtnInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.08)' },
+  navBtnText: { fontSize: 13, fontWeight: '600', color: theme.textPrimary },
+  tellBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
+  tellIconContainer: { width: 20, height: 20, position: 'relative' },
+  tellIconWrap: { justifyContent: 'center', alignItems: 'center' },
+  tellIconAbsolute: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  tellBtnText: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  logoText: { fontSize: 26, fontWeight: '700', color: theme.gold, textShadowColor: 'rgba(212, 175, 55, 0.6)', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 20 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
+  loadingText: { marginTop: 16, color: theme.textSubtle, fontSize: 14 },
+  stateTitle: { fontSize: 20, fontWeight: '600', color: theme.textPrimary, marginTop: 16, marginBottom: 8 },
+  stateSubtitle: { fontSize: 14, color: theme.textSecondary, textAlign: 'center' },
+  retryBtn: { marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 20, backgroundColor: theme.glass, borderWidth: 1, borderColor: theme.glassBorder },
+  retryText: { fontSize: 14, fontWeight: '600', color: theme.textPrimary },
+  primaryBtn: { marginTop: 20, paddingVertical: 14, paddingHorizontal: 28, borderRadius: 24, backgroundColor: theme.primary },
+  primaryBtnText: { fontSize: 15, fontWeight: '600', color: '#fff' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalWrap: { flex: 1, marginTop: 40, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' },
+  modalBg: { flex: 1 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.glassBorder },
+  modalClose: { padding: 8, width: 44, alignItems: 'center' },
+  modalHeaderCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  modalHeaderText: { fontSize: 17, fontWeight: '600', color: theme.textPrimary },
+  modalTagBadge: { justifyContent: 'center', alignItems: 'center' },
+  modalTagEmoji: { fontSize: 16 },
+  modalScroll: { flex: 1 },
+  modalScrollContent: { padding: 20, paddingBottom: 40 },
+  modalUser: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  modalAvatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
+  modalUserName: { fontSize: 16, fontWeight: '600', color: theme.textPrimary },
+  modalDate: { fontSize: 13, color: theme.textSubtle, marginTop: 2 },
+  modalTitle: { fontSize: 24, fontWeight: '700', color: theme.textPrimary, marginBottom: 16 },
+  modalContentText: { fontSize: 16, color: theme.textSecondary, lineHeight: 26, marginBottom: 24 },
+  modalAudio: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16, backgroundColor: theme.glass, borderRadius: 20, borderWidth: 1, borderColor: theme.glassBorder, marginBottom: 24 },
+  modalAudioInfo: { flex: 1 },
+  modalProgressTrack: { height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
+  modalProgressFill: { height: '100%', backgroundColor: theme.gold },
+  modalTimeRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  modalTimeText: { fontSize: 12, color: theme.textSubtle, fontVariant: ['tabular-nums'] },
+  modalEngagement: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  modalEngageBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 16, backgroundColor: theme.glass, borderWidth: 1, borderColor: theme.glassBorder },
+  modalEngageBtnActive: { backgroundColor: theme.glowGold, borderColor: theme.gold + '30' },
+  modalEngageText: { fontSize: 15, fontWeight: '600', color: theme.textSecondary },
+  modalEngageTextActive: { color: theme.gold },
+  modalReactionEmoji: { fontSize: 22 },
+  modalWowText: { fontSize: 15, fontWeight: '600', color: theme.textSecondary, fontStyle: 'italic' },
+  threadSection: { marginTop: 8 },
+  threadSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: theme.glassBorder },
+  threadSectionTitle: { fontSize: 16, fontWeight: '600', color: theme.textPrimary, flex: 1 },
+  threadSectionCount: { fontSize: 14, color: theme.gold, fontWeight: '600' },
+  threadItem: { marginBottom: 12, position: 'relative' },
+  threadLine: { position: 'absolute', left: -12, top: 20, bottom: 0, width: 2, backgroundColor: theme.glassBorder, borderRadius: 1 },
+  threadContent: { borderRadius: 16, padding: 14, borderWidth: 1, borderColor: theme.glassBorder },
+  threadHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  threadAvatar: { width: 32, height: 32, borderRadius: 16, marginRight: 10 },
+  threadMeta: { flex: 1 },
+  threadAuthor: { fontSize: 14, fontWeight: '600', color: theme.textPrimary },
+  threadTime: { fontSize: 11, color: theme.textMuted, marginTop: 1 },
+  threadText: { fontSize: 14, color: theme.textSecondary, lineHeight: 20 },
+  comingSoonOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.7)', justifyContent: 'center', alignItems: 'center', padding: 32 },
+  comingSoonContent: { width: '100%', maxWidth: 320, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: theme.glassBorder },
+  comingSoonGradient: { padding: 32, alignItems: 'center' },
+  comingSoonIconWrap: { marginBottom: 20 },
+  comingSoonIconBg: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center' },
+  comingSoonTitle: { fontSize: 24, fontWeight: '700', color: theme.textPrimary, marginBottom: 8 },
+  comingSoonFeature: { fontSize: 16, fontWeight: '600', color: theme.gold, marginBottom: 12 },
+  comingSoonDesc: { fontSize: 14, color: theme.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  comingSoonBtn: { borderRadius: 20, overflow: 'hidden', width: '100%' },
+  comingSoonBtnGradient: { paddingVertical: 14, alignItems: 'center' },
+  comingSoonBtnText: { fontSize: 15, fontWeight: '600', color: '#fff' },
 });

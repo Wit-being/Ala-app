@@ -13,6 +13,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import RecordDreamScreen from '../screens/RecordDreamScreen';
 import NotificationScreen from '../screens/NotificationScreen';
 import ViewProfileScreen from '../screens/ViewProfileScreen';
+import DreamDetailScreen from '../screens/DreamDetailScreen';
 
 const Stack = createStackNavigator();
 
@@ -57,6 +58,11 @@ function AppNavigator() {
                 name="ViewProfile" 
                 component={ViewProfileScreen} 
                 options={{ headerShown: false }} 
+              />
+              <Stack.Screen
+                name="DreamDetail"
+                component={DreamDetailScreen}
+                options={{ headerShown: false }}
               />
               <Stack.Screen 
                 name="RecordDream" 

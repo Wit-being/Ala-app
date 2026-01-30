@@ -33,6 +33,7 @@
     "expo-speech": "~14.0.8",
     "expo-status-bar": "~3.0.9",
     "expo-task-manager": "~14.0.9",
+    "lodash.debounce": "^4.0.8",
     "lottie-react-native": "~7.3.1",
     "react": "19.1.0",
     "react-native": "0.81.5",
@@ -49,6 +50,7 @@
     "zustand": "^5.0.10"
   },
   "devDependencies": {
+    "@types/lodash.debounce": "^4.0.9",
     "@types/react": "~19.1.0",
     "expo-module-scripts": "^5.0.8",
     "typescript": "~5.9.2"

@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
+import { useSocialStore } from '../store/socialStore';
 import useWakeDetection from '../hooks/useWakeDetection';
 import DreamPopup from '../components/DreamPopup';
 
@@ -14,11 +15,18 @@ import RecordDreamScreen from '../screens/RecordDreamScreen';
 import NotificationScreen from '../screens/NotificationScreen';
 import ViewProfileScreen from '../screens/ViewProfileScreen';
 import DreamDetailScreen from '../screens/DreamDetailScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import BlockedUsersScreen from '../screens/BlockedUsersScreen';
+import EditProfileScreen from '../screens/EditProfileScreen';
+import AllBadgesScreen from '../screens/AllBadgesScreen';
+import UserListScreen from '../screens/UserListScreen';
+import SearchUsersScreen from '../screens/SearchUsersScreen';
 
 const Stack = createStackNavigator();
 
 function AppNavigator() {
   const { user, setUser, setSession, setLoading } = useAuthStore();
+  const { fetchBlockedUsers, clearSocialData } = useSocialStore();
   const { showPopup, dismissPopup } = useWakeDetection();
 
   useEffect(() => {
@@ -37,6 +45,14 @@ function AppNavigator() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchBlockedUsers(user.id);
+    } else {
+      clearSocialData();
+    }
+  }, [user?.id]);
 
   return (
     <>
@@ -57,13 +73,14 @@ function AppNavigator() {
               <Stack.Screen 
                 name="ViewProfile" 
                 component={ViewProfileScreen} 
-                options={{ headerShown: false }} 
               />
+              <Stack.Screen name="AllBadges" component={AllBadgesScreen} />
               <Stack.Screen
                 name="DreamDetail"
                 component={DreamDetailScreen}
-                options={{ headerShown: false }}
               />
+              <Stack.Screen name="SearchUsers" component={SearchUsersScreen} />
+              <Stack.Screen name="UserList" component={UserListScreen} />
               <Stack.Screen 
                 name="RecordDream" 
                 component={RecordDreamScreen}
@@ -76,6 +93,23 @@ function AppNavigator() {
               <Stack.Screen 
                 name="Notifications" 
                 component={NotificationScreen}
+                options={{
+                  presentation: 'modal',
+                  gestureEnabled: true,
+                  gestureDirection: 'vertical',
+                }}
+              />
+              <Stack.Screen 
+                name="Settings" 
+                component={SettingsScreen}
+              />
+              <Stack.Screen 
+                name="BlockedUsers" 
+                component={BlockedUsersScreen}
+              />
+              <Stack.Screen 
+                name="EditProfile" 
+                component={EditProfileScreen}
                 options={{
                   presentation: 'modal',
                   gestureEnabled: true,

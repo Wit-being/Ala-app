@@ -19,20 +19,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import { theme } from '../constants/theme';
 import { AnimatedGradientBackground, LoadingSpinner, EmptyState } from '../components/common';
+import DreamModal from '../components/main/DreamModal';
+import { DreamWithMeta, UserProfile, Interpretation, ReactionType } from '../types/dreams';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SWIPE_THRESHOLD = 80;
-
-interface UserProfile {
-  id: string;
-  username?: string;
-  display_name?: string;
-  avatar_url?: string;
-}
 
 interface Notification {
   id: string;
@@ -451,11 +447,27 @@ export default function NotificationsScreen({ navigation }: any) {
   const [mutedUsers, setMutedUsers] = useState<MutedUser[]>([]);
   const [mutedPosts, setMutedPosts] = useState<MutedPost[]>([]);
 
+  // Dream Modal State
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedDream, setSelectedDream] = useState<DreamWithMeta | null>(null);
+  const [interpretations, setInterpretations] = useState<Interpretation[]>([]);
+  const [interpretationsLoading, setInterpretationsLoading] = useState(false);
+  const [dreamLoading, setDreamLoading] = useState(false);
+
+  // Audio
+  const player = useAudioPlayer();
+  const status = useAudioPlayerStatus(player);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [isAudioLoading, setIsAudioLoading] = useState<string | null>(null);
+
   useFocusEffect(
     useCallback(() => {
       fetchNotifications();
       fetchSettings();
       fetchMutedItems();
+      return () => {
+        player.pause();
+      };
     }, [user?.id])
   );
 
@@ -612,12 +624,214 @@ export default function NotificationsScreen({ navigation }: any) {
     }
   };
 
+  // Fetch dream and open modal
+  const fetchDreamAndOpen = async (dreamId: string) => {
+    setDreamLoading(true);
+    try {
+      const { data: dream, error } = await supabase
+        .from('dreams')
+        .select('*')
+        .eq('id', dreamId)
+        .single();
+
+      if (error || !dream) {
+        Alert.alert('Error', 'Dream not found');
+        return;
+      }
+
+      // Fetch author profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, is_public')
+        .eq('id', dream.user_id)
+        .single();
+
+      // Fetch reaction data
+      let reactionCount = 0;
+      let userReaction: ReactionType | null = null;
+
+      const { count: reactions } = await supabase
+        .from('dream_reactions')
+        .select('*', { count: 'exact', head: true })
+        .eq('dream_id', dreamId);
+      reactionCount = reactions || 0;
+
+      if (user?.id) {
+        const { data: userReactionData } = await supabase
+          .from('dream_reactions')
+          .select('reaction_type')
+          .eq('dream_id', dreamId)
+          .eq('user_id', user.id)
+          .single();
+        userReaction = userReactionData?.reaction_type as ReactionType | null;
+      }
+
+      // Fetch interpretation count
+      let interpretationCount = 0;
+      if (dream.interpretation_mode && dream.interpretation_mode !== 'disabled') {
+        const { count: ic } = await supabase
+          .from('interpretations')
+          .select('*', { count: 'exact', head: true })
+          .eq('dream_id', dreamId);
+        interpretationCount = ic || 0;
+      }
+
+      const dreamWithMeta: DreamWithMeta = {
+        ...dream,
+        authorProfile: profile,
+        reactionCount,
+        userReaction,
+        interpretationCount,
+      };
+
+      setSelectedDream(dreamWithMeta);
+
+      // Fetch interpretations
+      if (dream.interpretation_mode && dream.interpretation_mode !== 'disabled') {
+        fetchInterpretations(dreamId);
+      }
+
+      setModalVisible(true);
+    } catch (error) {
+      console.error('Error fetching dream:', error);
+      Alert.alert('Error', 'Failed to load dream');
+    } finally {
+      setDreamLoading(false);
+    }
+  };
+
+  const fetchInterpretations = async (dreamId: string) => {
+    setInterpretationsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('interpretations')
+        .select('id, dream_id, user_id, content, created_at, parent_id')
+        .eq('dream_id', dreamId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      const withAuthors = await Promise.all(
+        (data || []).map(async (interp) => {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('id, username, display_name, avatar_url, is_public')
+            .eq('id', interp.user_id)
+            .single();
+          return { ...interp, author: profile ?? undefined };
+        })
+      );
+
+      const rootInterpretations: Interpretation[] = [];
+      const repliesMap: { [key: string]: Interpretation[] } = {};
+
+      withAuthors.forEach((interp) => {
+        if (interp.parent_id) {
+          if (!repliesMap[interp.parent_id]) repliesMap[interp.parent_id] = [];
+          repliesMap[interp.parent_id].push(interp);
+        } else {
+          rootInterpretations.push({ ...interp, replies: [] });
+        }
+      });
+
+      rootInterpretations.forEach((interp) => {
+        interp.replies = repliesMap[interp.id] || [];
+      });
+
+      setInterpretations(rootInterpretations);
+    } catch (error) {
+      console.error('Error fetching interpretations:', error);
+    } finally {
+      setInterpretationsLoading(false);
+    }
+  };
+
   const handleNotificationPress = async (notification: Notification) => {
     if (!notification.read) await markAsRead(notification.id);
+
     if (notification.dream_id) {
-      navigation.navigate('Main', { openDreamId: notification.dream_id });
+      // Open dream modal directly
+      fetchDreamAndOpen(notification.dream_id);
     } else if (notification.actor_id) {
       navigation.navigate('ViewProfile', { userId: notification.actor_id });
+    }
+  };
+
+  const closeDreamModal = () => {
+    setModalVisible(false);
+    setTimeout(() => {
+      setSelectedDream(null);
+      setInterpretations([]);
+      player.pause();
+      setPlayingId(null);
+    }, 300);
+  };
+
+  const playAudio = async (dream: DreamWithMeta, context: string) => {
+    if (!dream.audio_url) return;
+
+    if (playingId === dream.id) {
+      if (status.playing) player.pause();
+      else player.play();
+      return;
+    }
+
+    setIsAudioLoading(dream.id);
+    if (playingId) player.pause();
+    setPlayingId(dream.id);
+
+    try {
+      await player.replace({ uri: dream.audio_url });
+      await player.play();
+    } catch (error) {
+      Alert.alert('Playback Error', 'Unable to play this audio');
+      setPlayingId(null);
+    } finally {
+      setIsAudioLoading(null);
+    }
+  };
+
+  const handleReact = async (dream: DreamWithMeta, reaction: ReactionType) => {
+    if (!user?.id) return;
+    try {
+      if (dream.userReaction) {
+        await supabase.from('dream_reactions').delete().eq('dream_id', dream.id).eq('user_id', user.id);
+      }
+      await supabase.from('dream_reactions').insert({
+        dream_id: dream.id,
+        user_id: user.id,
+        reaction_type: reaction,
+      });
+
+      setSelectedDream((prev) =>
+        prev
+          ? {
+              ...prev,
+              userReaction: reaction,
+              reactionCount: (prev.reactionCount ?? 0) + (prev.userReaction ? 0 : 1),
+            }
+          : null
+      );
+    } catch (error) {
+      console.error('Error reacting:', error);
+    }
+  };
+
+  const handleRemoveReaction = async (dream: DreamWithMeta) => {
+    if (!user?.id || !dream.userReaction) return;
+    try {
+      await supabase.from('dream_reactions').delete().eq('dream_id', dream.id).eq('user_id', user.id);
+      setSelectedDream((prev) =>
+        prev
+          ? {
+              ...prev,
+              userReaction: null,
+              reactionCount: Math.max(0, (prev.reactionCount ?? 1) - 1),
+            }
+          : null
+      );
+    } catch (error) {
+      console.error('Error removing reaction:', error);
     }
   };
 
@@ -705,8 +919,8 @@ export default function NotificationsScreen({ navigation }: any) {
         )}
 
         {/* Content */}
-        {loading ? (
-          <LoadingSpinner variant="moon" text="Loading notifications..." />
+        {loading || dreamLoading ? (
+          <LoadingSpinner variant="moon" text={dreamLoading ? 'Loading dream...' : 'Loading notifications...'} />
         ) : (
           <FlatList
             data={notifications}
@@ -741,6 +955,30 @@ export default function NotificationsScreen({ navigation }: any) {
           />
         )}
       </SafeAreaView>
+
+      {/* Dream Modal */}
+      <DreamModal
+        visible={modalVisible}
+        dream={selectedDream}
+        interpretations={interpretations}
+        interpretationsLoading={interpretationsLoading}
+        currentUserId={user?.id}
+        playingId={playingId}
+        playingContext="modal"
+        isAudioLoading={isAudioLoading}
+        audioStatus={status}
+        onClose={closeDreamModal}
+        onDelete={() => {}}
+        onEdit={() => {}}
+        onPlayAudio={playAudio}
+        onReact={handleReact}
+        onRemoveReaction={handleRemoveReaction}
+        onAddInterpretation={() => {}}
+        onProfilePress={(profile, userId) => {
+          closeDreamModal();
+          navigation.navigate('ViewProfile', { userId });
+        }}
+      />
 
       {/* Modals */}
       <SettingsModal

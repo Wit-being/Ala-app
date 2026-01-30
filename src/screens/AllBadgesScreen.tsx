@@ -207,7 +207,7 @@ export default function AllBadgesScreen({ navigation }: any) {
     return Object.values(BADGES).filter((badge) => badge.category === category);
   };
 
-  const renderBadgeCard = (badgeKey: string) => {
+  const renderBadgeCard = (badgeKey: BadgeKey) => {
     const badge = BADGES[badgeKey];
     const status = badgeStatuses[badgeKey];
     if (!badge) return null;
@@ -328,17 +328,17 @@ export default function AllBadgesScreen({ navigation }: any) {
           {/* Status Badges */}
           <Text style={styles.sectionTitle}>{BADGE_CATEGORIES.status.label}</Text>
           <Text style={styles.sectionDescription}>{BADGE_CATEGORIES.status.description}</Text>
-          {getBadgesByCategory('status').map((badge) => renderBadgeCard(badge.key))}
+          {getBadgesByCategory('status').map((badge) => renderBadgeCard(badge.key as BadgeKey))}
 
           {/* Milestone Badges */}
           <Text style={styles.sectionTitle}>{BADGE_CATEGORIES.milestone.label}</Text>
           <Text style={styles.sectionDescription}>{BADGE_CATEGORIES.milestone.description}</Text>
-          {getBadgesByCategory('milestone').map((badge) => renderBadgeCard(badge.key))}
+          {getBadgesByCategory('milestone').map((badge) => renderBadgeCard(badge.key as BadgeKey))}
 
           {/* Engagement Badges */}
           <Text style={styles.sectionTitle}>{BADGE_CATEGORIES.engagement.label}</Text>
           <Text style={styles.sectionDescription}>{BADGE_CATEGORIES.engagement.description}</Text>
-          {getBadgesByCategory('engagement').map((badge) => renderBadgeCard(badge.key))}
+          {getBadgesByCategory('engagement').map((badge) => renderBadgeCard(badge.key as BadgeKey))}
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>

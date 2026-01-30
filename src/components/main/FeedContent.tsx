@@ -1,9 +1,16 @@
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  StyleSheet,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import FeedDreamCard from './FeedDreamCard';
 import { theme } from '../../constants/theme';
-import { DreamWithMeta, UserProfile, AudioContext } from '../../types/dreams';
+import { DreamWithMeta, UserProfile, AudioContext, ReactionType } from '../../types/dreams';
 
 interface Props {
   dreams: DreamWithMeta[];
@@ -17,8 +24,8 @@ interface Props {
   onRefresh: () => void;
   onDreamPress: (dream: DreamWithMeta) => void;
   onPlayAudio: (dream: DreamWithMeta, context: AudioContext) => void;
-  onToggleLike: (dream: DreamWithMeta) => void;
-  onWowPress: () => void;
+  onReact: (dream: DreamWithMeta, reaction: ReactionType) => void;
+  onRemoveReaction: (dream: DreamWithMeta) => void;
   onProfilePress: (profile: UserProfile | null, userId: string) => void;
   onRecordPress: () => void;
 }
@@ -35,8 +42,8 @@ export default function FeedContent({
   onRefresh,
   onDreamPress,
   onPlayAudio,
-  onToggleLike,
-  onWowPress,
+  onReact,
+  onRemoveReaction,
   onProfilePress,
   onRecordPress,
 }: Props) {
@@ -88,8 +95,8 @@ export default function FeedContent({
           audioStatus={audioStatus}
           onPress={() => onDreamPress(item)}
           onPlayAudio={onPlayAudio}
-          onToggleLike={onToggleLike}
-          onWowPress={onWowPress}
+          onReact={onReact}
+          onRemoveReaction={onRemoveReaction}
           onProfilePress={onProfilePress}
         />
       )}

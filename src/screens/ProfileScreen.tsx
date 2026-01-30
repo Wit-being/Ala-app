@@ -163,7 +163,7 @@ export default function ProfileScreen({ navigation }: any) {
   };
 
   const renderBadge = (badgeKey: string) => {
-    const badge = BADGES[badgeKey];
+    const badge = BADGES[badgeKey as keyof typeof BADGES];
     if (!badge) return null;
 
     return (

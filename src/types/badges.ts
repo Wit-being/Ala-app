@@ -19,13 +19,15 @@ export type BadgeKey =
   | 'beloved_dreamer'
   | 'conversation_starter';
 
+export type BadgeCategory = 'status' | 'milestone' | 'engagement' | 'special';
+
 export interface Badge {
   key: BadgeKey;
   icon: IoniconsName;
   label: string;
   color: string;
   description: string;
-  category: 'status' | 'milestone' | 'engagement' | 'special';
+  category: BadgeCategory;
   requirement?: {
     type: 'count' | 'streak' | 'manual';
     target?: number;
@@ -38,3 +40,4 @@ export interface UserBadge {
   earned_at: string;
   progress?: number;
 }
+

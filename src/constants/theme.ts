@@ -23,6 +23,89 @@ export const theme = {
   glowPurple: 'rgba(167, 139, 250, 0.15)',
 };
 
+export const badgeColors = {
+  founding: {
+    primary: '#FFD700',
+    secondary: '#FFF8DC',
+    glow: 'rgba(255, 215, 0, 0.25)',
+    background: 'rgba(255, 215, 0, 0.12)',
+  },
+  verified: {
+    primary: '#1DA1F2',
+    secondary: '#E8F5FD',
+    glow: 'rgba(29, 161, 242, 0.25)',
+    background: 'rgba(29, 161, 242, 0.12)',
+  },
+  interpreter: {
+    primary: '#9B59B6',
+    secondary: '#F5EEF8',
+    glow: 'rgba(155, 89, 182, 0.25)',
+    background: 'rgba(155, 89, 182, 0.12)',
+  },
+  milestone: {
+    primary: '#3498DB',
+    secondary: '#EBF5FB',
+    glow: 'rgba(52, 152, 219, 0.25)',
+    background: 'rgba(52, 152, 219, 0.12)',
+  },
+  night: {
+    primary: '#2C3E50',
+    secondary: '#D5D8DC',
+    glow: 'rgba(44, 62, 80, 0.25)',
+    background: 'rgba(44, 62, 80, 0.15)',
+  },
+  achievement: {
+    primary: '#E74C3C',
+    secondary: '#FDEDEC',
+    glow: 'rgba(231, 76, 60, 0.25)',
+    background: 'rgba(231, 76, 60, 0.12)',
+  },
+  trophy: {
+    primary: '#F39C12',
+    secondary: '#FEF5E7',
+    glow: 'rgba(243, 156, 18, 0.25)',
+    background: 'rgba(243, 156, 18, 0.12)',
+  },
+  streak: {
+    primary: '#E67E22',
+    secondary: '#FDF2E9',
+    glow: 'rgba(230, 126, 34, 0.25)',
+    background: 'rgba(230, 126, 34, 0.12)',
+  },
+  journal: {
+    primary: '#1ABC9C',
+    secondary: '#E8F8F5',
+    glow: 'rgba(26, 188, 156, 0.25)',
+    background: 'rgba(26, 188, 156, 0.12)',
+  },
+  social: {
+    primary: '#9B59B6',
+    secondary: '#F5EEF8',
+    glow: 'rgba(155, 89, 182, 0.25)',
+    background: 'rgba(155, 89, 182, 0.12)',
+  },
+  love: {
+    primary: '#E91E63',
+    secondary: '#FCE4EC',
+    glow: 'rgba(233, 30, 99, 0.25)',
+    background: 'rgba(233, 30, 99, 0.12)',
+  },
+  heart: {
+    primary: '#FF6B6B',
+    secondary: '#FFE8E8',
+    glow: 'rgba(255, 107, 107, 0.25)',
+    background: 'rgba(255, 107, 107, 0.12)',
+  },
+  conversation: {
+    primary: '#00BCD4',
+    secondary: '#E0F7FA',
+    glow: 'rgba(0, 188, 212, 0.25)',
+    background: 'rgba(0, 188, 212, 0.12)',
+  },
+};
+
+export type BadgeColorKey = keyof typeof badgeColors;
+
 export const AMBIENT_GRADIENTS: readonly [string, string, string][] = [
   ['#050a15', '#0a1628', '#0f172a'],
   ['#0a0f1a', '#121a2e', '#1a2744'],
@@ -51,7 +134,9 @@ export const TAG_EMOJIS: { [key: string]: string } = {
   fog: '🌫️',
 };
 
-export const OVERLAY_CONFIG: { [key: string]: { emoji: string; tintColor: string; secondaryEmoji?: string } } = {
+export const OVERLAY_CONFIG: {
+  [key: string]: { emoji: string; tintColor: string; secondaryEmoji?: string };
+} = {
   sparkles: { emoji: '✨', tintColor: 'rgba(255, 215, 0, 0.04)', secondaryEmoji: '⭐' },
   stars: { emoji: '🌟', tintColor: 'rgba(255, 223, 100, 0.04)', secondaryEmoji: '✨' },
   rainbow: { emoji: '🌈', tintColor: 'rgba(255, 150, 200, 0.03)', secondaryEmoji: '☁️' },

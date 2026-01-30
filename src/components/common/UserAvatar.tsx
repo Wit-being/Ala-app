@@ -1,7 +1,8 @@
-import React from 'react';
-import { View, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../constants/theme';
+import { BADGES } from '../../constants/badges';
 
 interface Props {
   uri?: string | null;
@@ -18,11 +19,11 @@ interface Props {
 }
 
 const sizeMap = {
-  xs: { avatar: 28, badge: 12, badgeIcon: 6, borderWidth: 1.5 },
-  small: { avatar: 36, badge: 14, badgeIcon: 8, borderWidth: 2 },
-  medium: { avatar: 48, badge: 18, badgeIcon: 10, borderWidth: 2 },
-  large: { avatar: 72, badge: 24, badgeIcon: 12, borderWidth: 2.5 },
-  xl: { avatar: 110, badge: 28, badgeIcon: 14, borderWidth: 3 },
+  xs: { avatar: 28, badgeIcon: 10 },
+  small: { avatar: 36, badgeIcon: 12 },
+  medium: { avatar: 48, badgeIcon: 14 },
+  large: { avatar: 72, badgeIcon: 18 },
+  xl: { avatar: 110, badgeIcon: 22 },
 };
 
 export default function UserAvatar({
@@ -31,58 +32,58 @@ export default function UserAvatar({
   size = 'medium',
   showBadge = false,
   badgeIcon = 'checkmark',
-  badgeColor = theme.gold,
+  badgeColor = theme.primary,
   isFoundingDreamer = false,
   isVerified = false,
   isVerifiedInterpreter = false,
   onPress,
   style,
 }: Props) {
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
   const dimensions = sizeMap[size];
-  
-  const hasSpecialStatus = isFoundingDreamer || isVerified || isVerifiedInterpreter;
+
+  const getPrimaryBadge = () => {
+    if (isFoundingDreamer && BADGES.founding_dreamer) return BADGES.founding_dreamer;
+    if (isVerifiedInterpreter && BADGES.verified_interpreter) return BADGES.verified_interpreter;
+    if (isVerified && BADGES.verified) return BADGES.verified;
+    return null;
+  };
+
+  const primaryBadge = getPrimaryBadge();
+  const hasSpecialStatus = !!primaryBadge;
   const shouldShowBadge = showBadge || hasSpecialStatus;
-  
-  // Determine badge color based on status
+
   const getBadgeColor = () => {
-    if (isFoundingDreamer) return theme.gold;
-    if (isVerifiedInterpreter) return theme.purple;
-    if (isVerified) return theme.primary;
+    if (primaryBadge) return primaryBadge.color;
     return badgeColor;
   };
 
-  // Determine badge icon based on status
-  const getBadgeIcon = () => {
-    if (isFoundingDreamer) return 'star';
-    if (isVerifiedInterpreter) return 'eye';
-    if (isVerified) return 'checkmark';
+  const getBadgeIcon = (): string => {
+    if (primaryBadge) return primaryBadge.icon;
     return badgeIcon;
   };
 
   const getAvatarUrl = () => {
-    if (uri?.startsWith('http')) return uri;
+    if (uri && (uri.startsWith('http') || uri.startsWith('file'))) return uri;
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1e293b&color=60a5fa&size=${dimensions.avatar * 2}`;
   };
 
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const badgeColorValue = getBadgeColor();
+
   const avatarContent = (
     <View style={[styles.container, style]}>
-      {/* Glow effect for special users */}
-      {hasSpecialStatus && (
-        <View
-          style={[
-            styles.glow,
-            {
-              width: dimensions.avatar + 8,
-              height: dimensions.avatar + 8,
-              borderRadius: (dimensions.avatar + 8) / 2,
-              backgroundColor: getBadgeColor() + '20',
-              shadowColor: getBadgeColor(),
-            },
-          ]}
-        />
-      )}
-      
-      {/* Avatar Image */}
+      {/* Avatar */}
       <View
         style={[
           styles.avatarWrapper,
@@ -90,43 +91,57 @@ export default function UserAvatar({
             width: dimensions.avatar,
             height: dimensions.avatar,
             borderRadius: dimensions.avatar / 2,
-            borderWidth: hasSpecialStatus ? dimensions.borderWidth : 0,
-            borderColor: hasSpecialStatus ? getBadgeColor() : 'transparent',
           },
         ]}
       >
-        <Image
+        {!imageLoaded && (
+          <View
+            style={[
+              styles.placeholder,
+              {
+                width: dimensions.avatar,
+                height: dimensions.avatar,
+                borderRadius: dimensions.avatar / 2,
+              },
+            ]}
+          >
+            <Ionicons name="person" size={dimensions.avatar * 0.5} color={theme.textMuted} />
+          </View>
+        )}
+
+        <Animated.Image
           source={{ uri: getAvatarUrl() }}
           style={[
             styles.avatar,
             {
-              width: dimensions.avatar - (hasSpecialStatus ? dimensions.borderWidth * 2 : 0),
-              height: dimensions.avatar - (hasSpecialStatus ? dimensions.borderWidth * 2 : 0),
-              borderRadius: (dimensions.avatar - (hasSpecialStatus ? dimensions.borderWidth * 2 : 0)) / 2,
+              width: dimensions.avatar,
+              height: dimensions.avatar,
+              borderRadius: dimensions.avatar / 2,
+              opacity: fadeAnim,
             },
           ]}
+          onLoad={handleImageLoad}
         />
       </View>
 
-      {/* Badge */}
+      {/* Badge - just the icon with color, no circle background */}
       {shouldShowBadge && (
         <View
           style={[
-            styles.badge,
+            styles.badgeContainer,
             {
-              width: dimensions.badge,
-              height: dimensions.badge,
-              borderRadius: dimensions.badge / 2,
-              backgroundColor: getBadgeColor(),
-              borderWidth: size === 'xs' || size === 'small' ? 1.5 : 2,
+              bottom: size === 'xl' ? 0 : size === 'large' ? -2 : -3,
+              right: size === 'xl' ? 0 : size === 'large' ? -2 : -3,
             },
           ]}
         >
-          <Ionicons
-            name={getBadgeIcon() as any}
-            size={dimensions.badgeIcon}
-            color="#fff"
-          />
+          <View style={styles.badgeBackground}>
+            <Ionicons
+              name={getBadgeIcon() as any}
+              size={dimensions.badgeIcon}
+              color={badgeColorValue}
+            />
+          </View>
         </View>
       )}
     </View>
@@ -149,30 +164,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  glow: {
-    position: 'absolute',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 8,
-  },
   avatarWrapper: {
     overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: theme.glassBorder,
+  },
+  placeholder: {
+    position: 'absolute',
+    backgroundColor: theme.glass,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   avatar: {
+    position: 'absolute',
     backgroundColor: theme.glass,
   },
-  badge: {
+  badgeContainer: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    borderColor: theme.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 4,
+  },
+  badgeBackground: {
+    backgroundColor: theme.background,
+    borderRadius: 10,
+    padding: 2,
   },
 });

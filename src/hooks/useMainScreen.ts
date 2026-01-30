@@ -11,6 +11,7 @@ import {
   AudioContext,
   DreamSection,
   JournalStats,
+  ReactionType,
 } from '../types/dreams';
 
 export function useMainScreen() {
@@ -207,8 +208,10 @@ export function useMainScreen() {
       const dreamsWithMeta = await Promise.all(
         (data || []).map(async (dream) => {
           let likeCount = 0, interpretationCount = 0, isLiked = false;
+          let reactionCount = 0, userReaction: ReactionType | null = null;
           let authorProfile: UserProfile | null = null;
 
+          // Fetch author profile
           const { data: profile } = await supabase
             .from('profiles')
             .select('id, username, display_name, avatar_url, is_public')
@@ -217,13 +220,22 @@ export function useMainScreen() {
           authorProfile = profile;
 
           if (dream.enable_engagement) {
+            // Fetch legacy likes (for backward compatibility)
             const { count: likes } = await supabase
               .from('dream_likes')
               .select('*', { count: 'exact', head: true })
               .eq('dream_id', dream.id);
             likeCount = likes || 0;
             
+            // Fetch reactions count
+            const { count: reactions } = await supabase
+              .from('dream_reactions')
+              .select('*', { count: 'exact', head: true })
+              .eq('dream_id', dream.id);
+            reactionCount = reactions || 0;
+            
             if (user?.id) {
+              // Check legacy like
               const { data: userLike } = await supabase
                 .from('dream_likes')
                 .select('id')
@@ -231,6 +243,15 @@ export function useMainScreen() {
                 .eq('user_id', user.id)
                 .single();
               isLiked = !!userLike;
+              
+              // Check user's reaction
+              const { data: userReactionData } = await supabase
+                .from('dream_reactions')
+                .select('reaction_type')
+                .eq('dream_id', dream.id)
+                .eq('user_id', user.id)
+                .single();
+              userReaction = userReactionData?.reaction_type as ReactionType | null;
             }
           }
 
@@ -242,7 +263,15 @@ export function useMainScreen() {
             interpretationCount = ic || 0;
           }
 
-          return { ...dream, likeCount, interpretationCount, isLiked, authorProfile };
+          return {
+            ...dream,
+            likeCount,
+            interpretationCount,
+            isLiked,
+            authorProfile,
+            reactionCount,
+            userReaction,
+          };
         })
       );
 
@@ -268,7 +297,39 @@ export function useMainScreen() {
         .limit(100);
 
       if (error) throw error;
-      setMyDreams(data || []);
+
+      // Fetch reaction data for own dreams
+      const dreamsWithMeta = await Promise.all(
+        (data || []).map(async (dream) => {
+          let reactionCount = 0;
+          let interpretationCount = 0;
+
+          if (dream.enable_engagement) {
+            const { count: reactions } = await supabase
+              .from('dream_reactions')
+              .select('*', { count: 'exact', head: true })
+              .eq('dream_id', dream.id);
+            reactionCount = reactions || 0;
+          }
+
+          if (dream.interpretation_mode && dream.interpretation_mode !== 'disabled') {
+            const { count: ic } = await supabase
+              .from('interpretations')
+              .select('*', { count: 'exact', head: true })
+              .eq('dream_id', dream.id);
+            interpretationCount = ic || 0;
+          }
+
+          return {
+            ...dream,
+            reactionCount,
+            interpretationCount,
+            userReaction: null, // Own dreams don't need user reaction
+          };
+        })
+      );
+
+      setMyDreams(dreamsWithMeta);
     } catch (error: any) {
       setMyDreamsError(error.message || 'Failed to load your dreams');
     } finally {
@@ -327,14 +388,23 @@ export function useMainScreen() {
     recipientId: string,
     type: string,
     dreamId: string,
-    dreamTitle: string | null
+    dreamTitle: string | null,
+    reactionType?: ReactionType
   ) => {
     if (!user?.id || recipientId === user.id) return;
     try {
       const displayName = userProfile?.display_name || userProfile?.username || 'Someone';
       let message = '';
       
-      if (type === 'like') {
+      if (type === 'reaction') {
+        const reactionEmojis: Record<ReactionType, string> = {
+          scary: '😱',
+          sweet: '🥰',
+          divine: '✨',
+        };
+        const emoji = reactionType ? reactionEmojis[reactionType] : '✨';
+        message = `${displayName} reacted ${emoji} to your dream${dreamTitle ? ` "${dreamTitle}"` : ''}`;
+      } else if (type === 'like') {
         message = `${displayName} reacted to your dream${dreamTitle ? ` "${dreamTitle}"` : ''}`;
       } else if (type === 'interpretation') {
         message = `${displayName} interpreted your dream${dreamTitle ? ` "${dreamTitle}"` : ''}`;
@@ -355,7 +425,98 @@ export function useMainScreen() {
     }
   }, [user?.id, userProfile]);
 
-  // Like Toggle
+  // Reaction Functions
+  const reactToDream = useCallback(async (dream: DreamWithMeta, reaction: ReactionType) => {
+    if (!user?.id) return;
+    
+    try {
+      // Remove existing reaction if any
+      if (dream.userReaction) {
+        await supabase
+          .from('dream_reactions')
+          .delete()
+          .eq('dream_id', dream.id)
+          .eq('user_id', user.id);
+      }
+      
+      // Add new reaction
+      await supabase.from('dream_reactions').insert({
+        dream_id: dream.id,
+        user_id: user.id,
+        reaction_type: reaction,
+      });
+
+      // Send notification if not own dream
+      if (dream.user_id !== user.id) {
+        await createNotification(dream.user_id, 'reaction', dream.id, dream.title, reaction);
+      }
+
+      // Update local state
+      const hadReaction = !!dream.userReaction;
+      
+      const updateDreams = (dreams: DreamWithMeta[]) =>
+        dreams.map((d) =>
+          d.id === dream.id
+            ? {
+                ...d,
+                userReaction: reaction,
+                reactionCount: (d.reactionCount ?? 0) + (hadReaction ? 0 : 1),
+              }
+            : d
+        );
+
+      setFeedDreams(updateDreams);
+      setMyDreams(updateDreams);
+
+      if (selectedDream?.id === dream.id) {
+        setSelectedDream({
+          ...selectedDream,
+          userReaction: reaction,
+          reactionCount: (selectedDream.reactionCount ?? 0) + (hadReaction ? 0 : 1),
+        });
+      }
+    } catch (error) {
+      console.error('Error reacting to dream:', error);
+    }
+  }, [user?.id, selectedDream, createNotification]);
+
+  const removeReaction = useCallback(async (dream: DreamWithMeta) => {
+    if (!user?.id || !dream.userReaction) return;
+    
+    try {
+      await supabase
+        .from('dream_reactions')
+        .delete()
+        .eq('dream_id', dream.id)
+        .eq('user_id', user.id);
+
+      const updateDreams = (dreams: DreamWithMeta[]) =>
+        dreams.map((d) =>
+          d.id === dream.id
+            ? {
+                ...d,
+                userReaction: null,
+                reactionCount: Math.max(0, (d.reactionCount ?? 1) - 1),
+              }
+            : d
+        );
+
+      setFeedDreams(updateDreams);
+      setMyDreams(updateDreams);
+
+      if (selectedDream?.id === dream.id) {
+        setSelectedDream({
+          ...selectedDream,
+          userReaction: null,
+          reactionCount: Math.max(0, (selectedDream.reactionCount ?? 1) - 1),
+        });
+      }
+    } catch (error) {
+      console.error('Error removing reaction:', error);
+    }
+  }, [user?.id, selectedDream]);
+
+  // Legacy Like Toggle (keep for backward compatibility)
   const toggleLike = useCallback(async (dream: DreamWithMeta) => {
     if (!user?.id || !dream.enable_engagement) return;
     try {
@@ -482,6 +643,7 @@ export function useMainScreen() {
       if (error) throw error;
       
       setMyDreams((prev) => prev.filter((d) => d.id !== dreamToDelete));
+      setFeedDreams((prev) => prev.filter((d) => d.id !== dreamToDelete));
       
       if (playingId === dreamToDelete) {
         player.pause();
@@ -568,7 +730,11 @@ export function useMainScreen() {
     confirmDeleteDream,
     cancelDelete,
     
-    // Like
+    // Reactions (new)
+    reactToDream,
+    removeReaction,
+    
+    // Legacy Like (keep for backward compatibility)
     toggleLike,
     
     // Coming Soon

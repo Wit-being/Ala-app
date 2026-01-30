@@ -5,7 +5,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import PagerView from 'react-native-pager-view';
 
-// Components
 import AnimatedGradientBackground from '../components/common/AnimatedGradientBackground';
 import ComingSoonModal from '../components/common/ComingSoonModal';
 import ConfirmModal from '../components/common/ConfirmModal';
@@ -16,14 +15,13 @@ import SearchContent from '../components/main/SearchContent';
 import DreamModal from '../components/main/DreamModal';
 import BottomNav from '../components/main/BottomNav';
 
-// Hook & Theme
 import { useMainScreen } from '../hooks/useMainScreen';
 import { theme } from '../constants/theme';
-import { UserProfile } from '../types/dreams';
+import { UserProfile, DreamWithMeta, ReactionType } from '../types/dreams';
 
 export default function MainScreen({ navigation, route }: any) {
   const pagerRef = useRef<PagerView>(null);
-  const [activeTab, setActiveTab] = React.useState(1); // Start on Feed
+  const [activeTab, setActiveTab] = React.useState(1);
 
   const {
     user,
@@ -61,7 +59,8 @@ export default function MainScreen({ navigation, route }: any) {
     showDeleteConfirmation,
     confirmDeleteDream,
     cancelDelete,
-    toggleLike,
+    reactToDream,
+    removeReaction,
     comingSoonVisible,
     comingSoonFeature,
     showComingSoon,
@@ -72,17 +71,16 @@ export default function MainScreen({ navigation, route }: any) {
     checkNotifications,
   } = useMainScreen();
 
-  // Handle deep link to open specific dream
   useEffect(() => {
     if (route?.params?.openDreamId) {
       const dreamId = route.params.openDreamId;
-      const dream = feedDreams.find((d) => d.id === dreamId) || myDreams.find((d) => d.id === dreamId);
+      const dream =
+        feedDreams.find((d) => d.id === dreamId) || myDreams.find((d) => d.id === dreamId);
       if (dream) openDreamModal(dream);
       navigation.setParams({ openDreamId: undefined });
     }
   }, [route?.params?.openDreamId, feedDreams, myDreams]);
 
-  // Fetch data on focus
   useFocusEffect(
     useCallback(() => {
       fetchUserProfile();
@@ -105,6 +103,19 @@ export default function MainScreen({ navigation, route }: any) {
       return;
     }
     navigation.navigate('ViewProfile', { userId });
+  };
+
+  const handleEditDream = (dream: DreamWithMeta) => {
+    closeDreamModal();
+    navigation.navigate('EditDream', { dreamId: dream.id });
+  };
+
+  const handleReact = async (dream: DreamWithMeta, reaction: ReactionType) => {
+    await reactToDream(dream, reaction);
+  };
+
+  const handleRemoveReaction = async (dream: DreamWithMeta) => {
+    await removeReaction(dream);
   };
 
   return (
@@ -167,8 +178,8 @@ export default function MainScreen({ navigation, route }: any) {
               onRefresh={fetchFeedDreams}
               onDreamPress={openDreamModal}
               onPlayAudio={playAudio}
-              onToggleLike={toggleLike}
-              onWowPress={() => showComingSoon('Wow Reactions')}
+              onReact={handleReact}
+              onRemoveReaction={handleRemoveReaction}
               onProfilePress={navigateToProfile}
               onRecordPress={() => navigation.navigate('RecordDream')}
             />
@@ -217,9 +228,10 @@ export default function MainScreen({ navigation, route }: any) {
         audioStatus={status}
         onClose={closeDreamModal}
         onDelete={showDeleteConfirmation}
+        onEdit={handleEditDream}
         onPlayAudio={playAudio}
-        onToggleLike={toggleLike}
-        onWowPress={() => showComingSoon('Wow Reactions')}
+        onReact={handleReact}
+        onRemoveReaction={handleRemoveReaction}
         onAddInterpretation={() => showComingSoon('Add Interpretation')}
         onProfilePress={navigateToProfile}
       />

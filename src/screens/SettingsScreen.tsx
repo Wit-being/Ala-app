@@ -211,7 +211,7 @@ export default function SettingsScreen({ navigation }: any) {
               <Text style={styles.sectionTitle}>Your Badges</Text>
               <View style={styles.card}>
                 {userBadges.map((badgeKey, index) => {
-                  const badge = BADGES[badgeKey];
+                  const badge = BADGES[badgeKey as keyof typeof BADGES];
                   if (!badge) return null;
                   return (
                     <React.Fragment key={badgeKey}>

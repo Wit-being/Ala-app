@@ -1,11 +1,11 @@
-import { Badge } from '../types/badges';
+import { Badge, BadgeKey, BadgeCategory } from '../types/badges';
 import { theme } from './theme';
 
-export const BADGES: Record<string, Badge> = {
+export const BADGES: Record<BadgeKey, Badge> = {
   // Status Badges
   founding_dreamer: {
     key: 'founding_dreamer',
-    icon: 'star',
+    icon: 'ribbon',
     label: 'Founding Dreamer',
     color: theme.gold,
     description: 'One of the first 50 dreamers to join',
@@ -135,7 +135,9 @@ export const BADGES: Record<string, Badge> = {
   },
 };
 
-export const BADGE_CATEGORIES = {
+export const BADGE_KEYS = Object.keys(BADGES) as BadgeKey[];
+
+export const BADGE_CATEGORIES: Record<BadgeCategory, { label: string; description: string }> = {
   status: {
     label: 'Account Status',
     description: 'Special account designations',
@@ -153,3 +155,29 @@ export const BADGE_CATEGORIES = {
     description: 'Limited edition badges',
   },
 };
+
+// Utilities
+
+export function getBadge(key: BadgeKey): Badge | undefined {
+  return BADGES[key];
+}
+
+export function getBadgesByCategory(category: BadgeCategory): Badge[] {
+  return BADGE_KEYS.map((key) => BADGES[key]).filter((b) => b.category === category);
+}
+
+export function getBadgeProgress(badge: Badge, currentValue: number): number {
+  if (!badge.requirement?.target) return 0;
+  return Math.min((currentValue / badge.requirement.target) * 100, 100);
+}
+
+export function isBadgeEarnable(badge: Badge): boolean {
+  return badge.requirement?.type !== 'manual';
+}
+
+export function getGlowColor(color: string, opacity: number = 0.2): string {
+  if (color === theme.gold) return `rgba(212, 175, 55, ${opacity})`;
+  if (color === theme.primary) return `rgba(96, 165, 250, ${opacity})`;
+  if (color === theme.purple) return `rgba(167, 139, 250, ${opacity})`;
+  return `rgba(255, 255, 255, ${opacity})`;
+}

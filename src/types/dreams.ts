@@ -21,6 +21,19 @@ export interface UserProfile {
   display_name?: string;
   avatar_url?: string;
   is_public?: boolean;
+  is_founding_dreamer?: boolean;
+  is_verified?: boolean;
+  is_verified_interpreter?: boolean;
+}
+
+export type ReactionType = 'scary' | 'sweet' | 'divine';
+
+export interface DreamReaction {
+  id: string;
+  dream_id: string;
+  user_id: string;
+  reaction_type: ReactionType;
+  created_at: string;
 }
 
 export interface DreamWithMeta extends Dream {
@@ -28,6 +41,14 @@ export interface DreamWithMeta extends Dream {
   interpretationCount?: number;
   isLiked?: boolean;
   authorProfile?: UserProfile | null;
+  // New reaction fields
+  userReaction?: ReactionType | null;
+  reactionCount?: number;
+  reactionCounts?: {
+    scary: number;
+    sweet: number;
+    divine: number;
+  };
 }
 
 export interface DreamSection {
